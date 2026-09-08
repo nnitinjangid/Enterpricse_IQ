@@ -1,0 +1,75 @@
+# ==============================
+# FastAPI
+# ==============================
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ==============================
+# Configuration
+# ==============================
+python-dotenv
+pydantic
+pydantic-settings
+email-validator
+
+# ==============================
+# Database - MySQL
+# ==============================
+sqlalchemy
+mysql-connector-python
+
+# ==============================
+# Authentication & Security
+# ==============================
+python-jose[cryptography]
+passlib[argon2]
+
+# ==============================
+# Document Processing
+# ==============================
+pypdf
+PyMuPDF
+python-docx
+openpyxl
+pandas
+
+# ==============================
+# Embeddings / NLP
+# ==============================
+sentence-transformers
+numpy
+
+# ==============================
+# Vector Database
+# ==============================
+qdrant-client
+
+# ==============================
+# LLM
+# ==============================
+google-generativeai
+
+# ==============================
+# Agentic RAG / LangGraph
+# ==============================
+langchain
+langchain-core
+langgraph
+
+# ==============================
+# HTTP / External Search
+# ==============================
+httpx
+requests
+
+# ==============================
+# Testing
+# ==============================
+pytest
+pytest-asyncio
+
+# ==============================
+# Environment / Utilities
+# ==============================
+python-dateutil
