@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+
     # =====================================================
     # Application
     # =====================================================
@@ -40,6 +41,16 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = (
         "all-MiniLM-L6-v2"
+    )
+
+    # =====================================================
+    # Groq
+    # =====================================================
+
+    GROQ_API_KEY: str
+
+    GROQ_MODEL: str = (
+        "llama-3.3-70b-versatile"
     )
 
     # =====================================================

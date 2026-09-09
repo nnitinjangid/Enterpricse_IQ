@@ -5,6 +5,8 @@ from app.api.documents import router as documents_router
 from app.api.rbac_test import router as rbac_test_router
 from app.api.users import router as users_router
 from app.api.search import router as search_router
+from app.api.chat import router as chat_router
+from app.api.agent import router as agent_router
 
 from app.core.config import settings
 
@@ -34,7 +36,6 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup_event():
-
     create_tables()
 
 
@@ -60,6 +61,14 @@ app.include_router(
 
 app.include_router(
     search_router
+)
+
+app.include_router(
+    chat_router
+)
+
+app.include_router(
+    agent_router
 )
 
 

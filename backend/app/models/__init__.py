@@ -4,6 +4,7 @@ from app.models.document_chunk import DocumentChunk
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.evaluation import Evaluation
+from app.models.sales_record import SalesRecord
 
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "Conversation",
     "Message",
     "Evaluation",
+    "SalesRecord",
 ]

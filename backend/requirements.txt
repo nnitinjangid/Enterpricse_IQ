@@ -39,6 +39,7 @@ pandas
 # ==============================
 sentence-transformers
 numpy
+rank-bm25
 
 # ==============================
 # Vector Database
@@ -73,3 +74,4 @@ pytest-asyncio
 # Environment / Utilities
 # ==============================
 python-dateutil
+groq

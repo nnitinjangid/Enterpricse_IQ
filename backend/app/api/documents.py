@@ -520,6 +520,7 @@ def chunk_document(
             chunks=chunks,
             document_id=document.id,
             filename=document.original_filename,
+            uploaded_by=current_user.id,
         )
 
     except Exception as e:
