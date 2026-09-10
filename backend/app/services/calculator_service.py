@@ -1,6 +1,7 @@
 import ast
 import operator
 import re
+from typing import Any
 
 from groq import Groq
 
@@ -12,10 +13,6 @@ client = Groq(
 )
 
 
-# =========================================================
-# Allowed Operators
-# =========================================================
-
 ALLOWED_OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -26,30 +23,17 @@ ALLOWED_OPERATORS = {
 }
 
 
-# =========================================================
-# Expression Extraction
-# =========================================================
-
 def extract_expression(
     text_response: str,
 ) -> str:
 
     if not text_response:
-        raise ValueError(
-            "Calculator returned an empty expression."
-        )
+        return ""
 
     expression = text_response.strip()
 
     expression = re.sub(
-        r"```python\s*",
-        "",
-        expression,
-        flags=re.IGNORECASE,
-    )
-
-    expression = re.sub(
-        r"```text\s*",
+        r"```(?:python|text|math)?\s*",
         "",
         expression,
         flags=re.IGNORECASE,
@@ -59,7 +43,6 @@ def extract_expression(
         r"```\s*$",
         "",
         expression,
-        flags=re.IGNORECASE,
     )
 
     expression = expression.strip()
@@ -67,25 +50,349 @@ def extract_expression(
     return expression
 
 
-# =========================================================
-# Generate Mathematical Expression
-# =========================================================
+def extract_numeric_values(
+    value: Any,
+) -> list[float]:
+
+    values = []
+
+    if value is None:
+        return values
+
+    if isinstance(value, bool):
+        return values
+
+    if isinstance(value, (int, float)):
+        values.append(float(value))
+        return values
+
+    if isinstance(value, dict):
+
+        for item in value.values():
+
+            values.extend(
+                extract_numeric_values(item)
+            )
+
+        return values
+
+    if isinstance(value, (list, tuple)):
+
+        for item in value:
+
+            values.extend(
+                extract_numeric_values(item)
+            )
+
+        return values
+
+    try:
+
+        if hasattr(value, "as_integer_ratio"):
+
+            values.append(
+                float(value)
+            )
+
+            return values
+
+    except Exception:
+        pass
+
+    return values
+
+
+def extract_previous_numeric_value(
+    context: str,
+) -> float | None:
+
+    if not context:
+        return None
+
+    # -------------------------------------------------
+    # Try common SQL result formats first.
+    # -------------------------------------------------
+
+    number_patterns = [
+        r"['\"](?:SUM\(total_amount\)|total_sales|total_amount|revenue|total)['\"]?\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"['\"]SUM\(total_amount\)['\"]?\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"['\"]total_sales['\"]?\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r":\s*([0-9]+(?:\.[0-9]+)?)",
+    ]
+
+    for pattern in number_patterns:
+
+        matches = re.findall(
+            pattern,
+            context,
+            flags=re.IGNORECASE,
+        )
+
+        if matches:
+
+            try:
+
+                return float(
+                    matches[0]
+                )
+
+            except ValueError:
+
+                continue
+
+    # -------------------------------------------------
+    # Generic numeric extraction.
+    # -------------------------------------------------
+
+    generic_numbers = re.findall(
+        r"(?<![A-Za-z0-9_])\d+(?:\.\d+)?(?![A-Za-z0-9_])",
+        context,
+    )
+
+    if generic_numbers:
+
+        numeric_values = []
+
+        for value in generic_numbers:
+
+            try:
+
+                numeric_values.append(
+                    float(value)
+                )
+
+            except ValueError:
+
+                pass
+
+        if numeric_values:
+
+            # Prefer business-sized values.
+            large_values = [
+                value
+                for value in numeric_values
+                if abs(value) >= 1000
+            ]
+
+            if large_values:
+
+                return large_values[0]
+
+            return numeric_values[0]
+
+    return None
+
+
+def build_fallback_expression(
+    question: str,
+    context: str,
+) -> str | None:
+
+    if not question or not context:
+        return None
+
+    question_lower = question.lower()
+
+    previous_value = (
+        extract_previous_numeric_value(
+            context
+        )
+    )
+
+    if previous_value is None:
+        return None
+
+    # -------------------------------------------------
+    # Detect percentage.
+    #
+    # Examples:
+    #
+    # 10% discount
+    # 15% of that amount
+    # 5.5% on those sales
+    # -------------------------------------------------
+
+    percentage_match = re.search(
+        r"(\d+(?:\.\d+)?)\s*%",
+        question_lower,
+    )
+
+    if not percentage_match:
+        return None
+
+    percentage = float(
+        percentage_match.group(1)
+    )
+
+    # -------------------------------------------------
+    # Detect discount language.
+    # -------------------------------------------------
+
+    has_discount = (
+        "discount" in question_lower
+    )
+
+    # -------------------------------------------------
+    # Detect references to a previous tool result.
+    # -------------------------------------------------
+
+    references_previous_value = any(
+        phrase in question_lower
+        for phrase in [
+            "that amount",
+            "that value",
+            "that total",
+            "that sales",
+            "that sale",
+            "those sales",
+            "those amounts",
+            "those values",
+            "the amount",
+            "the total",
+            "the sales",
+            "the sale",
+            "the result",
+        ]
+    )
+
+    # -------------------------------------------------
+    # Case 1:
+    #
+    # "What would a 10% discount on those sales be?"
+    #
+    # We need the DISCOUNT VALUE.
+    #
+    # 540000 * 10 / 100
+    # -------------------------------------------------
+
+    if (
+        has_discount
+        and references_previous_value
+    ):
+
+        # If user explicitly asks for the amount
+        # AFTER discount, calculate remaining amount.
+        after_discount = any(
+            phrase in question_lower
+            for phrase in [
+                "after discount",
+                "after a discount",
+                "after the discount",
+                "remaining amount",
+                "final amount",
+                "amount after",
+                "sales after",
+            ]
+        )
+
+        if after_discount:
+
+            expression = (
+                f"{previous_value} - "
+                f"({previous_value} * "
+                f"{percentage} / 100)"
+            )
+
+            print(
+                "[CALCULATOR] "
+                "Detected dependent after-discount calculation."
+            )
+
+            return expression
+
+        # Otherwise return discount amount.
+        expression = (
+            f"{previous_value} * "
+            f"{percentage} / 100"
+        )
+
+        print(
+            "[CALCULATOR] "
+            "Detected dependent discount calculation."
+        )
+
+        return expression
+
+    # -------------------------------------------------
+    # Case 2:
+    #
+    # "What is 10% of that amount?"
+    #
+    # 540000 * 10 / 100
+    # -------------------------------------------------
+
+    if references_previous_value:
+
+        expression = (
+            f"{previous_value} * "
+            f"{percentage} / 100"
+        )
+
+        print(
+            "[CALCULATOR] "
+            "Detected percentage of previous value."
+        )
+
+        return expression
+
+    return None
+
 
 def generate_expression(
     question: str,
+    context: str = "",
 ) -> str:
 
     if not question or not question.strip():
+
         raise ValueError(
             "Question cannot be empty."
         )
+
+    # -------------------------------------------------
+    # FIRST:
+    #
+    # Resolve dependent calculations deterministically.
+    #
+    # This is important for:
+    #
+    # "that amount"
+    # "those sales"
+    # "the total"
+    # etc.
+    # -------------------------------------------------
+
+    fallback_expression = (
+        build_fallback_expression(
+            question=question,
+            context=context,
+        )
+    )
+
+    if fallback_expression:
+
+        print(
+            "[CALCULATOR] "
+            f"Using resolved expression: "
+            f"{fallback_expression}"
+        )
+
+        return fallback_expression
+
+    # -------------------------------------------------
+    # Otherwise use Groq for normal calculations.
+    # -------------------------------------------------
 
     system_prompt = """
 You are the calculation expression generator
 for EnterpriseIQ.
 
-Convert the user's mathematical question into
-ONE mathematical expression that Python can calculate.
+Your job is to convert the user's calculation
+requirement into ONE mathematical expression
+that Python can safely calculate.
 
 STRICT RULES:
 
@@ -97,8 +404,15 @@ STRICT RULES:
 6. Use only numbers and these operators:
    + - * / % **
 7. Use parentheses when required.
-8. For percentage calculations, convert the
-   percentage into normal arithmetic.
+8. If the question refers to a value from previous
+   tool results, use that value directly.
+9. Never leave references such as:
+   "that amount"
+   "that value"
+   "that total"
+   "those sales"
+   unresolved.
+10. NEVER return an empty response.
 
 Examples:
 
@@ -120,11 +434,42 @@ What is 80000 after 25% discount?
 Return:
 80000 - (80000 * 25 / 100)
 
+Previous SQL result:
+540000
+
 Question:
-Calculate 10 + 20 * 5
+What would a 10% discount on those sales be?
 
 Return:
-10 + 20 * 5
+540000 * 10 / 100
+"""
+
+    user_prompt = f"""
+Calculation requirement:
+
+{question.strip()}
+"""
+
+    if context:
+
+        user_prompt += f"""
+
+Previous tool result:
+
+{context}
+
+Use the numeric value from the previous tool
+result whenever the question refers to:
+- that amount
+- that value
+- that total
+- those sales
+- the sales
+- the amount
+- the total
+- the result
+
+Return ONLY one mathematical expression.
 """
 
     response = client.chat.completions.create(
@@ -136,29 +481,34 @@ Return:
             },
             {
                 "role": "user",
-                "content": question.strip(),
+                "content": user_prompt,
             },
         ],
         temperature=0,
-        max_tokens=100,
+        max_tokens=300,
     )
+
+    content = response.choices[0].message.content
 
     expression = extract_expression(
-        response.choices[0].message.content
+        content
     )
 
-    return expression
+    if expression:
 
+        return expression
 
-# =========================================================
-# Safe Mathematical Evaluator
-# =========================================================
+    raise ValueError(
+        "Calculator returned an empty expression."
+    )
+
 
 def safe_calculate(
     expression: str,
 ) -> float:
 
     if not expression:
+
         raise ValueError(
             "Expression cannot be empty."
         )
@@ -166,15 +516,16 @@ def safe_calculate(
     expression = expression.strip()
 
     if len(expression) > 200:
+
         raise ValueError(
             "Expression is too long."
         )
 
-    # Only mathematical characters
     if not re.fullmatch(
         r"[0-9+\-*/%().\s]+",
         expression,
     ):
+
         raise ValueError(
             "Unsafe characters detected in expression."
         )
@@ -194,7 +545,6 @@ def safe_calculate(
 
     def evaluate(node):
 
-        # Number
         if isinstance(
             node,
             ast.Constant,
@@ -220,7 +570,6 @@ def safe_calculate(
                 "Only numeric values are allowed."
             )
 
-        # Binary operation
         if isinstance(
             node,
             ast.BinOp,
@@ -244,7 +593,6 @@ def safe_calculate(
                 node.right
             )
 
-            # Prevent division by zero
             if (
                 operator_type
                 in {
@@ -258,7 +606,6 @@ def safe_calculate(
                     "Division by zero is not allowed."
                 )
 
-            # Prevent huge powers
             if (
                 operator_type == ast.Pow
                 and abs(right) > 10
@@ -275,7 +622,6 @@ def safe_calculate(
                 right,
             )
 
-        # Unary + / -
         if isinstance(
             node,
             ast.UnaryOp,
@@ -323,10 +669,6 @@ def safe_calculate(
     return float(result)
 
 
-# =========================================================
-# Format Result
-# =========================================================
-
 def format_result(
     result: float,
 ) -> str:
@@ -340,16 +682,14 @@ def format_result(
     ).rstrip(".")
 
 
-# =========================================================
-# Calculator Tool
-# =========================================================
-
 def calculate(
     question: str,
+    context: str = "",
 ) -> dict:
 
     expression = generate_expression(
-        question
+        question=question,
+        context=context,
     )
 
     result = safe_calculate(

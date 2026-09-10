@@ -29,10 +29,6 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# Request Schema
-# =========================================================
-
 class AgentRequest(BaseModel):
 
     question: str = Field(
@@ -40,10 +36,6 @@ class AgentRequest(BaseModel):
         max_length=2000,
     )
 
-
-# =========================================================
-# Agent API
-# =========================================================
 
 @router.post("")
 def agent_chat(
@@ -62,6 +54,24 @@ def agent_chat(
             db=db,
         )
 
+        if (
+            result.get(
+                "security_status"
+            )
+            == "blocked"
+        ):
+
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "prompt_injection_detected",
+                    "message": result.get(
+                        "security_message",
+                        "Unsafe request blocked.",
+                    ),
+                },
+            )
+
         return {
             "user_id": current_user.id,
             "question": result[
@@ -73,6 +83,28 @@ def agent_chat(
             "confidence": result[
                 "route_confidence"
             ],
+            "security": {
+                "checked": result.get(
+                    "security_checked",
+                    False,
+                ),
+                "status": result.get(
+                    "security_status",
+                    "unknown",
+                ),
+            },
+            "tools": result.get(
+                "tools",
+                [],
+            ),
+            "plan": result.get(
+                "plan",
+                [],
+            ),
+            "plan_reason": result.get(
+                "plan_reason",
+                "",
+            ),
             "answer": result[
                 "answer"
             ],
@@ -80,7 +112,14 @@ def agent_chat(
                 "sources",
                 [],
             ),
+            "tool_results": result.get(
+                "tool_results",
+                {},
+            ),
         }
+
+    except HTTPException:
+        raise
 
     except ValueError as e:
 

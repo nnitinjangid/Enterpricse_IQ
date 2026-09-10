@@ -11,6 +11,14 @@ RouteType = Literal[
 ]
 
 
+ToolType = Literal[
+    "rag",
+    "sql",
+    "calculator",
+    "general",
+]
+
+
 class AgentState(TypedDict, total=False):
 
     question: str
@@ -23,6 +31,16 @@ class AgentState(TypedDict, total=False):
 
     route_confidence: float
 
+    tools: list[ToolType]
+
+    plan_reason: str
+
+    plan: list[dict]
+
+    current_tool_index: int
+
+    tool_results: dict
+
     answer: str
 
     tool_result: str
@@ -30,3 +48,9 @@ class AgentState(TypedDict, total=False):
     sources: list[dict]
 
     error: str | None
+
+    security_checked: bool
+
+    security_status: str
+
+    security_message: str
