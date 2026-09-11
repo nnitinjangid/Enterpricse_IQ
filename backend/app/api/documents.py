@@ -10,18 +10,42 @@ from fastapi import (
     UploadFile,
     status,
 )
+
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+
+from app.core.dependencies import (
+    get_current_user,
+)
+
 from app.models.document import Document
-from app.models.document_chunk import DocumentChunk
+
+from app.models.document_chunk import (
+    DocumentChunk,
+)
+
 from app.models.user import User
-from app.schemas.document import DocumentUploadResponse
-from app.services.document_parser import extract_text
+
+from app.schemas.document import (
+    DocumentAccessUpdateRequest,
+    DocumentUploadResponse,
+)
+
+from app.services.document_access_service import (
+    can_manage_document_access,
+    validate_access_configuration,
+)
+
+from app.services.document_parser import (
+    extract_text,
+)
+
 from app.services.qdrant_service import (
     store_document_chunks,
+    update_document_access_metadata,
 )
+
 from app.services.text_chunker import (
     create_document_chunks,
 )
@@ -33,11 +57,8 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# Configuration
-# =========================================================
-
 UPLOAD_DIR = Path("uploads")
+
 
 ALLOWED_EXTENSIONS = {
     ".pdf",
@@ -46,24 +67,18 @@ ALLOWED_EXTENSIONS = {
     ".xlsx",
 }
 
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
+MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
-# =========================================================
-# Helper Functions
-# =========================================================
+def get_file_extension(
+    filename: str,
+) -> str:
 
-def get_file_extension(filename: str) -> str:
-    """
-    Get file extension in lowercase.
-    """
+    return Path(
+        filename
+    ).suffix.lower()
 
-    return Path(filename).suffix.lower()
-
-
-# =========================================================
-# Upload Document
-# =========================================================
 
 @router.post(
     "/upload",
@@ -72,27 +87,14 @@ def get_file_extension(filename: str) -> str:
 )
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload an enterprise document.
-
-    Supported formats:
-    - PDF
-    - DOCX
-    - CSV
-    - XLSX
-
-    Maximum file size:
-    - 20 MB
-    """
-
-    # -----------------------------------------------------
-    # Validate filename
-    # -----------------------------------------------------
 
     if not file.filename:
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename is required.",
@@ -102,15 +104,12 @@ async def upload_document(
         file.filename
     ).name
 
-    # -----------------------------------------------------
-    # Validate extension
-    # -----------------------------------------------------
-
     extension = get_file_extension(
         original_filename
     )
 
     if extension not in ALLOWED_EXTENSIONS:
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -119,56 +118,43 @@ async def upload_document(
             ),
         )
 
-    # -----------------------------------------------------
-    # Read file
-    # -----------------------------------------------------
-
     file_content = await file.read()
 
-    file_size = len(file_content)
-
-    # -----------------------------------------------------
-    # Validate empty file
-    # -----------------------------------------------------
+    file_size = len(
+        file_content
+    )
 
     if file_size == 0:
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
 
-    # -----------------------------------------------------
-    # Validate file size
-    # -----------------------------------------------------
-
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File size cannot exceed 20 MB.",
-        )
 
-    # -----------------------------------------------------
-    # Create upload directory
-    # -----------------------------------------------------
+        raise HTTPException(
+            status_code=(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            ),
+            detail=(
+                "File size cannot exceed 20 MB."
+            ),
+        )
 
     UPLOAD_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    # -----------------------------------------------------
-    # Generate unique filename
-    # -----------------------------------------------------
-
     stored_filename = (
         f"{uuid.uuid4().hex}{extension}"
     )
 
-    file_path = UPLOAD_DIR / stored_filename
-
-    # -----------------------------------------------------
-    # Save file
-    # -----------------------------------------------------
+    file_path = (
+        UPLOAD_DIR
+        / stored_filename
+    )
 
     try:
 
@@ -179,13 +165,13 @@ async def upload_document(
     except Exception as e:
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {str(e)}",
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                f"Failed to save file: {str(e)}"
+            ),
         )
-
-    # -----------------------------------------------------
-    # Create database record
-    # -----------------------------------------------------
 
     document = Document(
         filename=stored_filename,
@@ -195,6 +181,12 @@ async def upload_document(
         file_size=file_size,
         status="uploaded",
         uploaded_by=current_user.id,
+
+        # ---------------------------------
+        # DEFAULT ACCESS
+        # ---------------------------------
+        access_scope="private",
+        access_role=None,
     )
 
     try:
@@ -208,46 +200,168 @@ async def upload_document(
     except Exception:
 
         if file_path.exists():
+
             os.remove(file_path)
 
         db.rollback()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create document record.",
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Failed to create document record."
+            ),
         )
 
     return document
 
 
-# =========================================================
-# Extract Document Text
-# =========================================================
+@router.patch(
+    "/{document_id}/access",
+    response_model=DocumentUploadResponse,
+)
+def update_document_access(
+    document_id: int,
+    access_data: DocumentAccessUpdateRequest,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+
+    # -----------------------------------------
+    # FIND DOCUMENT
+    # -----------------------------------------
+
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id
+        )
+        .first()
+    )
+
+    if not document:
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+
+    # -----------------------------------------
+    # CHECK MANAGEMENT PERMISSION
+    # -----------------------------------------
+
+    if not can_manage_document_access(
+        document=document,
+        user=current_user,
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "You do not have permission "
+                "to change access for this document."
+            ),
+        )
+
+    # -----------------------------------------
+    # VALIDATE ACCESS CONFIGURATION
+    # -----------------------------------------
+
+    try:
+
+        validate_access_configuration(
+            access_scope=(
+                access_data.access_scope
+            ),
+            access_role=(
+                access_data.access_role
+            ),
+        )
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    # -----------------------------------------
+    # UPDATE MYSQL
+    # -----------------------------------------
+
+    document.access_scope = (
+        access_data.access_scope
+    )
+
+    document.access_role = (
+        access_data.access_role
+    )
+
+    try:
+
+        db.commit()
+
+        db.refresh(document)
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                f"Failed to update document access: "
+                f"{str(e)}"
+            ),
+        )
+
+    # -----------------------------------------
+    # UPDATE QDRANT PAYLOAD
+    # -----------------------------------------
+
+    try:
+
+        update_document_access_metadata(
+            document_id=document.id,
+            access_scope=(
+                document.access_scope
+            ),
+            access_role=(
+                document.access_role
+            ),
+        )
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Document access was updated in MySQL "
+                "but Qdrant metadata could not be updated. "
+                f"Please retry the access update. Error: {str(e)}"
+            ),
+        )
+
+    return document
+
 
 @router.post(
     "/{document_id}/extract",
 )
 def extract_document_text(
     document_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ):
-    """
-    Extract text from an uploaded document.
-
-    Supported:
-    - PDF
-    - DOCX
-    - CSV
-    - XLSX
-
-    Users can only access documents
-    uploaded by themselves.
-    """
-
-    # -----------------------------------------------------
-    # Find document
-    # -----------------------------------------------------
 
     document = (
         db.query(Document)
@@ -259,14 +373,11 @@ def extract_document_text(
     )
 
     if not document:
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
         )
-
-    # -----------------------------------------------------
-    # Extract text
-    # -----------------------------------------------------
 
     try:
 
@@ -284,15 +395,13 @@ def extract_document_text(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
                 f"Document extraction failed: {str(e)}"
             ),
         )
-
-    # -----------------------------------------------------
-    # Validate extracted text
-    # -----------------------------------------------------
 
     if not text.strip():
 
@@ -305,23 +414,19 @@ def extract_document_text(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No readable text found in document.",
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "No readable text found in document."
+            ),
         )
-
-    # -----------------------------------------------------
-    # Update document status
-    # -----------------------------------------------------
 
     document.status = "extracted"
 
     document.error_message = None
 
     db.commit()
-
-    # -----------------------------------------------------
-    # Return extracted text
-    # -----------------------------------------------------
 
     return {
         "document_id": document.id,
@@ -333,33 +438,16 @@ def extract_document_text(
     }
 
 
-# =========================================================
-# Create Document Chunks + Store Embeddings
-# =========================================================
-
 @router.post(
     "/{document_id}/chunk",
 )
 def chunk_document(
     document_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ):
-    """
-    Extract, clean and split a document into chunks.
-
-    Then:
-
-    1. Store chunks in MySQL.
-    2. Generate embeddings.
-    3. Store embeddings in Qdrant.
-
-    Page numbers are preserved for PDF documents.
-    """
-
-    # -----------------------------------------------------
-    # Find document
-    # -----------------------------------------------------
 
     document = (
         db.query(Document)
@@ -371,14 +459,11 @@ def chunk_document(
     )
 
     if not document:
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
         )
-
-    # -----------------------------------------------------
-    # Extract text
-    # -----------------------------------------------------
 
     try:
 
@@ -396,15 +481,13 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
                 f"Document extraction failed: {str(e)}"
             ),
         )
-
-    # -----------------------------------------------------
-    # Validate text
-    # -----------------------------------------------------
 
     if not text.strip():
 
@@ -417,13 +500,13 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No readable text found in document.",
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "No readable text found in document."
+            ),
         )
-
-    # -----------------------------------------------------
-    # Create chunks
-    # -----------------------------------------------------
 
     try:
 
@@ -442,13 +525,11 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=f"Chunking failed: {str(e)}",
         )
-
-    # -----------------------------------------------------
-    # Validate chunks
-    # -----------------------------------------------------
 
     if not chunks:
 
@@ -461,23 +542,22 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No chunks could be created.",
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "No chunks could be created."
+            ),
         )
 
-    # -----------------------------------------------------
-    # Remove existing MySQL chunks
-    # -----------------------------------------------------
-
-    db.query(DocumentChunk).filter(
-        DocumentChunk.document_id == document.id
+    db.query(
+        DocumentChunk
+    ).filter(
+        DocumentChunk.document_id
+        == document.id
     ).delete(
         synchronize_session=False
     )
-
-    # -----------------------------------------------------
-    # Save chunks to MySQL
-    # -----------------------------------------------------
 
     try:
 
@@ -485,12 +565,20 @@ def chunk_document(
 
             document_chunk = DocumentChunk(
                 document_id=document.id,
-                chunk_index=chunk["chunk_index"],
-                page_number=chunk["page_number"],
-                content=chunk["content"],
+                chunk_index=(
+                    chunk["chunk_index"]
+                ),
+                page_number=(
+                    chunk["page_number"]
+                ),
+                content=(
+                    chunk["content"]
+                ),
             )
 
-            db.add(document_chunk)
+            db.add(
+                document_chunk
+            )
 
         db.commit()
 
@@ -499,28 +587,38 @@ def chunk_document(
         db.rollback()
 
         document.status = "failed"
+
         document.error_message = str(e)
 
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
-                f"Failed to save document chunks: {str(e)}"
+                "Failed to save document chunks: "
+                f"{str(e)}"
             ),
         )
-
-    # -----------------------------------------------------
-    # Store embeddings in Qdrant
-    # -----------------------------------------------------
 
     try:
 
         vector_count = store_document_chunks(
             chunks=chunks,
             document_id=document.id,
-            filename=document.original_filename,
+            filename=(
+                document.original_filename
+            ),
             uploaded_by=current_user.id,
+
+            access_scope=(
+                document.access_scope
+            ),
+
+            access_role=(
+                document.access_role
+            ),
         )
 
     except Exception as e:
@@ -534,15 +632,14 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
-                f"Failed to store embeddings in Qdrant: {str(e)}"
+                "Failed to store embeddings in Qdrant: "
+                f"{str(e)}"
             ),
         )
-
-    # -----------------------------------------------------
-    # Validate Qdrant storage
-    # -----------------------------------------------------
 
     if vector_count != len(chunks):
 
@@ -556,26 +653,20 @@ def chunk_document(
         db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
                 "Some document embeddings were not "
                 "stored in Qdrant."
             ),
         )
 
-    # -----------------------------------------------------
-    # Update document status
-    # -----------------------------------------------------
-
     document.status = "embedded"
 
     document.error_message = None
 
     db.commit()
-
-    # -----------------------------------------------------
-    # Return result
-    # -----------------------------------------------------
 
     return {
         "document_id": document.id,
@@ -585,5 +676,11 @@ def chunk_document(
         "vectors_stored": vector_count,
         "chunk_size": 1000,
         "chunk_overlap": 200,
+        "access_scope": (
+            document.access_scope
+        ),
+        "access_role": (
+            document.access_role
+        ),
         "chunks": chunks,
     }

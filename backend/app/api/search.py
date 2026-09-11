@@ -1,9 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+)
+
 from pydantic import BaseModel, Field
+
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+
+from app.core.dependencies import (
+    get_current_user,
+)
+
 from app.models.user import User
 
 from app.services.qdrant_service import (
@@ -29,10 +39,6 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# Request Schema
-# =========================================================
-
 class SearchRequest(BaseModel):
 
     query: str = Field(
@@ -46,10 +52,6 @@ class SearchRequest(BaseModel):
         le=20,
     )
 
-
-# =========================================================
-# Semantic Search
-# =========================================================
 
 @router.post("")
 def semantic_search(
@@ -65,13 +67,23 @@ def semantic_search(
             query=request.query,
             top_k=request.top_k,
             user_id=current_user.id,
+            user_role=current_user.role,
+        )
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
         )
 
     except Exception as e:
 
         raise HTTPException(
             status_code=500,
-            detail=f"Search failed: {str(e)}",
+            detail=(
+                f"Search failed: {str(e)}"
+            ),
         )
 
     return {
@@ -82,10 +94,6 @@ def semantic_search(
         "results": results,
     }
 
-
-# =========================================================
-# BM25 Keyword Search
-# =========================================================
 
 @router.post("/keyword")
 def keyword_search_api(
@@ -102,6 +110,7 @@ def keyword_search_api(
             query=request.query,
             db=db,
             user_id=current_user.id,
+            user_role=current_user.role,
             top_k=request.top_k,
         )
 
@@ -116,7 +125,10 @@ def keyword_search_api(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Keyword search failed: {str(e)}",
+            detail=(
+                f"Keyword search failed: "
+                f"{str(e)}"
+            ),
         )
 
     return {
@@ -127,10 +139,6 @@ def keyword_search_api(
         "results": results,
     }
 
-
-# =========================================================
-# Hybrid Search
-# =========================================================
 
 @router.post("/hybrid")
 def hybrid_search_api(
@@ -147,6 +155,7 @@ def hybrid_search_api(
             query=request.query,
             db=db,
             user_id=current_user.id,
+            user_role=current_user.role,
             top_k=request.top_k,
         )
 
@@ -161,7 +170,10 @@ def hybrid_search_api(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Hybrid search failed: {str(e)}",
+            detail=(
+                f"Hybrid search failed: "
+                f"{str(e)}"
+            ),
         )
 
     return {
@@ -172,10 +184,6 @@ def hybrid_search_api(
         "results": results,
     }
 
-
-# =========================================================
-# Hybrid + Reranking
-# =========================================================
 
 @router.post("/rerank")
 def rerank_search_api(
@@ -188,23 +196,16 @@ def rerank_search_api(
 
     try:
 
-        # -------------------------------------------------
-        # First retrieve hybrid candidates
-        # -------------------------------------------------
-
         candidates = hybrid_search(
             query=request.query,
             db=db,
             user_id=current_user.id,
+            user_role=current_user.role,
             top_k=max(
                 request.top_k * 2,
                 10,
             ),
         )
-
-        # -------------------------------------------------
-        # Then rerank candidates
-        # -------------------------------------------------
 
         results = rerank_results(
             query=request.query,
@@ -223,7 +224,10 @@ def rerank_search_api(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Reranking failed: {str(e)}",
+            detail=(
+                f"Reranking failed: "
+                f"{str(e)}"
+            ),
         )
 
     return {
@@ -231,6 +235,8 @@ def rerank_search_api(
         "top_k": request.top_k,
         "candidates": len(candidates),
         "total_results": len(results),
-        "retrieval_method": "hybrid_reranked",
+        "retrieval_method": (
+            "hybrid_reranked"
+        ),
         "results": results,
     }

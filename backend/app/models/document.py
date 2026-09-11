@@ -57,6 +57,23 @@ class Document(Base):
         index=True,
     )
 
+    # -----------------------------------------
+    # DOCUMENT ACCESS CONTROL
+    # -----------------------------------------
+
+    access_scope: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="private",
+        index=True,
+    )
+
+    access_role: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

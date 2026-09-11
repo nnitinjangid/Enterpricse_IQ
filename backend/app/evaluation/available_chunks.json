@@ -1,0 +1,46 @@
+[
+    {
+        "document_id": 1,
+        "chunk_index": 0,
+        "chunk_id": [
+            1,
+            0
+        ],
+        "filename": "Get_Started_With_Smallpdf.pdf",
+        "page_number": 1,
+        "content": "Welcome to Smallpdf\nDigital Documents—All In One Place\nAccess Files Anytime, Anywhere\nEnhance Documents in One Click\nCollaborate With Others\nWith the new Smallpdf experience, you can\nfreely upload, organize, and share digital\ndocuments. When you enable the ‘Storage’\noption, we’ll also store all processed files here.\nYou can access files stored on Smallpdf from\nyour computer, phone, or tablet. We’ll also\nsync files from the Smallpdf Mobile App to our\nonline portal\nWhen you right-click on a file, we’ll present\nyou with an array of options to convert,\ncompress, or modify it.\nForget mundane administrative tasks. With\nSmallpdf, you can request e-signatures, send\nlarge files, or even enable the Smallpdf G Suite\nApp for your entire organization.\nReady to take document management to the next level?"
+    },
+    {
+        "document_id": 2,
+        "chunk_index": 0,
+        "chunk_id": [
+            2,
+            0
+        ],
+        "filename": "enterpriseiq_fake_business_document.pdf",
+        "page_number": 1,
+        "content": "ENTERPRISEIQ DEMO ENTERPRISE DOCUMENT\nDocument Type: Internal Business Information & Sales Report\nCompany: ABC Technologies Pvt. Ltd.\nDocument ID: EIQ-DEMO-2026-001\nReporting Period: April 2026 - June 2026\n1. Company Information\nABC Technologies Pvt. Ltd. is a fictional enterprise created for testing the EnterpriseIQ Agentic RAG platform. The\ncompany provides cloud software, data analytics, cybersecurity, and enterprise automation services.\n2. Customer Information\nCustomer: Rahul Enterprises\nCustomer ID: CUST-1045\nContact Person: Rahul Sharma\nCity: Jaipur\nPayment Terms: Net 30 Days\n3. Sales Order\nProduct / Service\nQty\nUnit Price (INR)\nTax\nAmount (INR)\nEnterprise Analytics Platform\n2\n75,000\n18%\n150,000\nCloud Automation Module\n1\n50,000\n18%\n50,000\nPremium Support\n1\n20,000\n18%\n20,000\nSubtotal: INR 220,000\nGST Rate: 18%\nGST Amount: INR 39,600\nTotal Invoice Amount: INR 259,600\n4. Important Dates\nOrder Date: 18/08/2026\nInvoice Date: 18/08/2026\nPayment Due Date: 17/09/2026\nService Start Date:"
+    },
+    {
+        "document_id": 2,
+        "chunk_index": 1,
+        "chunk_id": [
+            2,
+            1
+        ],
+        "filename": "enterpriseiq_fake_business_document.pdf",
+        "page_number": 1,
+        "content": "INR 220,000\nGST Rate: 18%\nGST Amount: INR 39,600\nTotal Invoice Amount: INR 259,600\n4. Important Dates\nOrder Date: 18/08/2026\nInvoice Date: 18/08/2026\nPayment Due Date: 17/09/2026\nService Start Date: 20/08/2026\n5. Discount Policy\nFor enterprise customers, a sales representative may provide a discount of up to 10% without additional approval.\nDiscounts above 10% and up to 20% require manager approval. Discounts above 20% require director approval.\nThe maximum standard discount allowed for any customer is 25%.\n6. Payment Policy\nCustomers with Net 30 payment terms must complete payment within 30 calendar days from the invoice date. Late\npayments may result in suspension of premium support services. Outstanding invoices should be reviewed by the\nfinance team.\n7. Quarterly Sales Summary\nRegion\nQ2 Sales (INR)\nGrowth\nNorth\n1,850,000\n12%\nWest\n2,450,000\n18%"
+    },
+    {
+        "document_id": 2,
+        "chunk_index": 2,
+        "chunk_id": [
+            2,
+            2
+        ],
+        "filename": "enterpriseiq_fake_business_document.pdf",
+        "page_number": 2,
+        "content": "South\n1,720,000\n9%\nEast\n1,280,000\n7%\nTotal Q2 Sales: INR 7,300,000\n8. Internal Notes\nThis document contains fictional data and is intended only for development and testing of EnterpriseIQ document\ningestion, chunking, embeddings, semantic search, RAG generation, and citation functionality."
+    }
+]

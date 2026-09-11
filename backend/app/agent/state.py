@@ -21,11 +21,25 @@ ToolType = Literal[
 
 class AgentState(TypedDict, total=False):
 
+    # -----------------------------------------
+    # USER REQUEST
+    # -----------------------------------------
+
     question: str
+
+    # -----------------------------------------
+    # USER CONTEXT
+    # -----------------------------------------
 
     user_id: int
 
+    user_role: str
+
     conversation_id: int | None
+
+    # -----------------------------------------
+    # ROUTING
+    # -----------------------------------------
 
     route: RouteType
 
@@ -33,21 +47,41 @@ class AgentState(TypedDict, total=False):
 
     tools: list[ToolType]
 
+    # -----------------------------------------
+    # PLANNING
+    # -----------------------------------------
+
     plan_reason: str
 
     plan: list[dict]
 
     current_tool_index: int
 
-    tool_results: dict
+    # -----------------------------------------
+    # TOOL RESULTS
+    # -----------------------------------------
 
-    answer: str
+    tool_results: dict
 
     tool_result: str
 
+    # -----------------------------------------
+    # FINAL RESPONSE
+    # -----------------------------------------
+
+    answer: str
+
     sources: list[dict]
 
+    # -----------------------------------------
+    # ERROR
+    # -----------------------------------------
+
     error: str | None
+
+    # -----------------------------------------
+    # SECURITY
+    # -----------------------------------------
 
     security_checked: bool
 

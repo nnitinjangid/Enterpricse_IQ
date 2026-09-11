@@ -41,6 +41,10 @@ from app.services.security_service import (
 )
 
 
+# ============================================================
+# SECURITY
+# ============================================================
+
 def security_node(
     state: AgentState,
 ) -> AgentState:
@@ -87,13 +91,308 @@ def security_node(
     }
 
 
+# ============================================================
+# DETERMINISTIC ROUTING GUARD
+# ============================================================
+
+def apply_deterministic_routing(
+    question: str,
+) -> dict | None:
+    """
+    Apply deterministic routing rules for queries
+    where the correct tool can be identified reliably.
+
+    This protects the agent from LLM planner mistakes.
+
+    Returns:
+        plan result dictionary
+        or None when the LLM planner should decide.
+    """
+
+    normalized = (
+        question
+        .lower()
+        .strip()
+    )
+
+    # --------------------------------------------------------
+    # Calculator detection
+    # --------------------------------------------------------
+
+    calculator_patterns = [
+        "what is",
+        "calculate",
+        "calculate the",
+        "how much is",
+        "percentage of",
+        "percent of",
+    ]
+
+    mathematical_symbols = [
+        "%",
+        "+",
+        "-",
+        "*",
+        "/",
+    ]
+
+    has_math_symbol = any(
+        symbol in normalized
+        for symbol in mathematical_symbols
+    )
+
+    has_calculator_phrase = any(
+        phrase in normalized
+        for phrase in calculator_patterns
+    )
+
+    # Avoid routing normal "what is" questions to calculator.
+    # Require either a mathematical symbol or clear numeric
+    # calculation language.
+    has_number = any(
+        character.isdigit()
+        for character in normalized
+    )
+
+    if (
+        has_number
+        and (
+            has_math_symbol
+            or (
+                "percentage of"
+                in normalized
+            )
+            or (
+                "percent of"
+                in normalized
+            )
+            or (
+                "calculate"
+                in normalized
+            )
+        )
+    ):
+
+        # Do not classify business questions containing
+        # percentages as calculator queries.
+        business_terms = [
+            "discount",
+            "sales",
+            "revenue",
+            "payment",
+            "invoice",
+            "customer",
+            "database",
+            "policy",
+        ]
+
+        has_business_term = any(
+            term in normalized
+            for term in business_terms
+        )
+
+        if not has_business_term:
+
+            return {
+                "plan": [
+                    {
+                        "step": 1,
+                        "tool": "calculator",
+                        "depends_on": [],
+                    }
+                ],
+                "tools": [
+                    "calculator"
+                ],
+                "reason": (
+                    "The query contains a mathematical "
+                    "calculation, so Calculator is required."
+                ),
+            }
+
+    # --------------------------------------------------------
+    # Document / RAG detection
+    # --------------------------------------------------------
+
+    rag_keywords = [
+        "payment due date",
+        "due date",
+        "payment date",
+        "invoice date",
+        "order date",
+        "service start date",
+        "payment terms",
+        "payment policy",
+        "discount policy",
+        "maximum standard discount",
+        "maximum discount",
+        "standard discount",
+        "customer information",
+        "customer details",
+        "company information",
+        "company policy",
+        "policy",
+        "document",
+        "contract",
+        "terms and conditions",
+    ]
+
+    has_rag_keyword = any(
+        keyword in normalized
+        for keyword in rag_keywords
+    )
+
+    # --------------------------------------------------------
+    # SQL detection
+    # --------------------------------------------------------
+
+    sql_keywords = [
+        "sales records",
+        "sales record",
+        "sales",
+        "revenue",
+        "database",
+        "stored in the database",
+        "database records",
+        "total sales",
+        "total revenue",
+        "quantity sold",
+        "records stored",
+    ]
+
+    has_sql_keyword = any(
+        keyword in normalized
+        for keyword in sql_keywords
+    )
+
+    # --------------------------------------------------------
+    # Combined SQL + RAG
+    # --------------------------------------------------------
+
+    if (
+        has_sql_keyword
+        and has_rag_keyword
+    ):
+
+        return {
+            "plan": [
+                {
+                    "step": 1,
+                    "tool": "sql",
+                    "depends_on": [],
+                },
+                {
+                    "step": 2,
+                    "tool": "rag",
+                    "depends_on": [],
+                },
+            ],
+            "tools": [
+                "sql",
+                "rag",
+            ],
+            "reason": (
+                "SQL provides structured database information "
+                "and RAG provides document or policy information; "
+                "the two tasks are independent."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # RAG-only
+    # --------------------------------------------------------
+
+    if has_rag_keyword:
+
+        return {
+            "plan": [
+                {
+                    "step": 1,
+                    "tool": "rag",
+                    "depends_on": [],
+                }
+            ],
+            "tools": [
+                "rag"
+            ],
+            "reason": (
+                "The query asks for information contained "
+                "in enterprise documents or policies, "
+                "so RAG is required."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # SQL-only
+    # --------------------------------------------------------
+
+    if has_sql_keyword:
+
+        return {
+            "plan": [
+                {
+                    "step": 1,
+                    "tool": "sql",
+                    "depends_on": [],
+                }
+            ],
+            "tools": [
+                "sql"
+            ],
+            "reason": (
+                "The query asks for structured information "
+                "stored in the database, so SQL is required."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # No deterministic match
+    # --------------------------------------------------------
+
+    return None
+
+
+# ============================================================
+# PLANNER
+# ============================================================
+
 def planner_node(
     state: AgentState,
 ) -> AgentState:
 
-    result = create_plan(
-        state["question"]
+    question = state["question"]
+
+    # --------------------------------------------------------
+    # First try deterministic routing.
+    # --------------------------------------------------------
+
+    deterministic_result = (
+        apply_deterministic_routing(
+            question
+        )
     )
+
+    if deterministic_result:
+
+        result = deterministic_result
+
+        print(
+            "[PLANNER] Deterministic routing rule matched."
+        )
+
+    else:
+
+        # ----------------------------------------------------
+        # Fall back to LLM planner.
+        # ----------------------------------------------------
+
+        result = create_plan(
+            question
+        )
+
+        print(
+            "[PLANNER] LLM planner used."
+        )
 
     plan = result["plan"]
 
@@ -135,6 +434,10 @@ def planner_node(
     }
 
 
+# ============================================================
+# RAG TOOL
+# ============================================================
+
 def rag_node(
     state: AgentState,
     db: Session,
@@ -148,6 +451,7 @@ def rag_node(
         question=state["question"],
         db=db,
         user_id=state["user_id"],
+        user_role=state["user_role"],
         top_k=5,
     )
 
@@ -196,6 +500,10 @@ def rag_node(
     }
 
 
+# ============================================================
+# SQL TOOL
+# ============================================================
+
 def sql_node(
     state: AgentState,
     db: Session,
@@ -221,6 +529,10 @@ def sql_node(
         },
     }
 
+
+# ============================================================
+# PARALLEL TOOL EXECUTION
+# ============================================================
 
 def execute_parallel_independent_tools(
     state: AgentState,
@@ -354,6 +666,10 @@ def execute_parallel_independent_tools(
     }
 
 
+# ============================================================
+# CALCULATOR CONTEXT
+# ============================================================
+
 def build_calculator_context(
     state: AgentState,
 ) -> str:
@@ -411,6 +727,10 @@ def build_calculator_context(
     )
 
 
+# ============================================================
+# CALCULATOR
+# ============================================================
+
 def calculator_node(
     state: AgentState,
 ) -> AgentState:
@@ -453,6 +773,10 @@ def calculator_node(
     }
 
 
+# ============================================================
+# GENERAL
+# ============================================================
+
 def general_node(
     state: AgentState,
 ) -> AgentState:
@@ -472,6 +796,10 @@ def general_node(
         },
     }
 
+
+# ============================================================
+# CALCULATOR ROUTER
+# ============================================================
 
 def should_run_calculator(
     state: AgentState,
@@ -512,6 +840,10 @@ def should_run_calculator(
 
     return "final_answer"
 
+
+# ============================================================
+# FINAL ANSWER GENERATION
+# ============================================================
 
 def generate_final_answer(
     question: str,
@@ -613,6 +945,10 @@ STRICT RULES:
     return answer.strip()
 
 
+# ============================================================
+# FINAL ANSWER NODE
+# ============================================================
+
 def final_answer_node(
     state: AgentState,
 ) -> AgentState:
@@ -635,6 +971,10 @@ def final_answer_node(
     }
 
 
+# ============================================================
+# SECURITY ROUTER
+# ============================================================
+
 def security_router(
     state: AgentState,
 ) -> str:
@@ -650,6 +990,10 @@ def security_router(
 
     return "planner"
 
+
+# ============================================================
+# BUILD GRAPH
+# ============================================================
 
 def build_agent_graph(
     db: Session,
@@ -750,9 +1094,14 @@ def build_agent_graph(
     return graph.compile()
 
 
+# ============================================================
+# RUN AGENT
+# ============================================================
+
 def run_agent(
     question: str,
     user_id: int,
+    user_role: str,
     db: Session,
 ) -> AgentState:
 
@@ -765,6 +1114,7 @@ def run_agent(
     initial_state: AgentState = {
         "question": question.strip(),
         "user_id": user_id,
+        "user_role": user_role,
         "conversation_id": None,
         "route": "general",
         "route_confidence": 0.0,

@@ -1,0 +1,44 @@
+[
+    {
+        "question": "What is the payment due date for Rahul Enterprises?",
+        "expected_route": "rag",
+        "expected_tools": [
+            "rag"
+        ],
+        "expected_answer_contains": [
+            "17/09/2026"
+        ]
+    },
+    {
+        "question": "What is the total of the sales records stored in the database for Q2 2026?",
+        "expected_route": "sql",
+        "expected_tools": [
+            "sql"
+        ],
+        "expected_answer_contains": [
+            "890000"
+        ]
+    },
+    {
+        "question": "What is 15% of 20000?",
+        "expected_route": "calculator",
+        "expected_tools": [
+            "calculator"
+        ],
+        "expected_answer_contains": [
+            "3000"
+        ]
+    },
+    {
+        "question": "What is the total of the sales records stored in the database for Q2 2026, and what is the maximum standard discount allowed?",
+        "expected_route": "sql",
+        "expected_tools": [
+            "sql",
+            "rag"
+        ],
+        "expected_answer_contains": [
+            "890000",
+            "25%"
+        ]
+    }
+]

@@ -14,7 +14,7 @@ from app.core.dependencies import (
     get_current_user,
 )
 
-from app.models.user import User
+from app.models import User
 
 from app.services.rag_service import (
     ask_rag,
@@ -28,7 +28,7 @@ router = APIRouter(
 
 
 # =========================================================
-# Request Schema
+# Chat Request
 # =========================================================
 
 class ChatRequest(BaseModel):
@@ -46,7 +46,7 @@ class ChatRequest(BaseModel):
 
 
 # =========================================================
-# Chat API
+# Chat Endpoint
 # =========================================================
 
 @router.post("")
@@ -64,11 +64,13 @@ def chat(
             question=request.question,
             db=db,
             user_id=current_user.id,
+            user_role=current_user.role,
             top_k=request.top_k,
         )
 
         return {
             "user_id": current_user.id,
+            "user_role": current_user.role,
             **result,
         }
 
@@ -76,6 +78,13 @@ def chat(
 
         raise HTTPException(
             status_code=400,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+
+        raise HTTPException(
+            status_code=403,
             detail=str(e),
         )
 

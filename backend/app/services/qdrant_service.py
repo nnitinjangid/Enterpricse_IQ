@@ -15,10 +15,6 @@ from app.services.embedding_service import (
 )
 
 
-# =========================================================
-# Collection
-# =========================================================
-
 def create_collection_if_not_exists(
     vector_size: int,
 ) -> None:
@@ -45,10 +41,6 @@ def create_collection_if_not_exists(
             f"{settings.QDRANT_COLLECTION}"
         )
 
-
-# =========================================================
-# Delete Document Vectors
-# =========================================================
 
 def delete_document_vectors(
     document_id: int,
@@ -80,15 +72,13 @@ def delete_document_vectors(
         raise
 
 
-# =========================================================
-# Store Document Chunks
-# =========================================================
-
 def store_document_chunks(
     chunks: list[dict],
     document_id: int,
     filename: str,
     uploaded_by: int,
+    access_scope: str = "private",
+    access_role: str | None = None,
 ) -> int:
 
     if not chunks:
@@ -131,13 +121,15 @@ def store_document_chunks(
             "document_id": document_id,
             "filename": filename,
             "uploaded_by": uploaded_by,
-            "chunk_index": chunk[
-                "chunk_index"
-            ],
-            "page_number": chunk[
-                "page_number"
-            ],
+            "chunk_index": chunk["chunk_index"],
+            "page_number": chunk["page_number"],
             "content": chunk["content"],
+
+            # ---------------------------------
+            # ACCESS CONTROL METADATA
+            # ---------------------------------
+            "access_scope": access_scope,
+            "access_role": access_role,
         }
 
         points.append(
@@ -161,22 +153,94 @@ def store_document_chunks(
     return len(points)
 
 
-# =========================================================
-# Semantic Search
-# =========================================================
+def build_access_filter(
+    user_id: int,
+    user_role: str,
+) -> Filter:
+
+    # -----------------------------------------
+    # NON-ADMIN USER ACCESS
+    #
+    # 1. Own documents
+    # 2. Company-wide documents
+    # 3. Documents shared with their role
+    #
+    # Admin access is handled separately in
+    # search_documents() because admins can
+    # access every document.
+    # -----------------------------------------
+
+    return Filter(
+        should=[
+            # ---------------------------------
+            # Own document
+            # ---------------------------------
+
+            Filter(
+                must=[
+                    FieldCondition(
+                        key="uploaded_by",
+                        match=MatchValue(
+                            value=user_id
+                        ),
+                    )
+                ]
+            ),
+
+            # ---------------------------------
+            # Company-wide document
+            # ---------------------------------
+
+            Filter(
+                must=[
+                    FieldCondition(
+                        key="access_scope",
+                        match=MatchValue(
+                            value="company"
+                        ),
+                    )
+                ]
+            ),
+
+            # ---------------------------------
+            # Role-based document
+            # ---------------------------------
+
+            Filter(
+                must=[
+                    FieldCondition(
+                        key="access_scope",
+                        match=MatchValue(
+                            value="role"
+                        ),
+                    ),
+                    FieldCondition(
+                        key="access_role",
+                        match=MatchValue(
+                            value=user_role
+                        ),
+                    ),
+                ]
+            ),
+        ]
+    )
+
 
 def search_documents(
     query: str,
     top_k: int = 5,
     user_id: int | None = None,
+    user_role: str | None = None,
 ) -> list[dict]:
 
     if not query or not query.strip():
+
         raise ValueError(
             "Search query cannot be empty."
         )
 
     if top_k <= 0:
+
         raise ValueError(
             "top_k must be greater than 0."
         )
@@ -185,28 +249,50 @@ def search_documents(
         query.strip()
     )
 
-    # =====================================================
-    # User Access Filter
-    # =====================================================
-
     query_filter = None
+
+    # -----------------------------------------
+    # DOCUMENT-LEVEL AUTHORIZATION
+    # -----------------------------------------
 
     if user_id is not None:
 
-        query_filter = Filter(
-            must=[
-                FieldCondition(
-                    key="uploaded_by",
-                    match=MatchValue(
-                        value=user_id
-                    ),
-                )
-            ]
-        )
+        if not user_role:
 
-    # =====================================================
-    # Qdrant Search
-    # =====================================================
+            raise ValueError(
+                "user_role is required when "
+                "user_id is provided."
+            )
+
+        # -------------------------------------
+        # ADMIN = UNIVERSAL ACCESS
+        # -------------------------------------
+
+        if user_role == "admin":
+
+            query_filter = None
+
+            print(
+                f"Qdrant search authorization: "
+                f"admin user {user_id} → all documents"
+            )
+
+        else:
+
+            query_filter = build_access_filter(
+                user_id=user_id,
+                user_role=user_role,
+            )
+
+            print(
+                f"Qdrant search authorization: "
+                f"user {user_id}, "
+                f"role={user_role} → filtered documents"
+            )
+
+    # -----------------------------------------
+    # VECTOR SEARCH
+    # -----------------------------------------
 
     search_results = qdrant_client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
@@ -243,8 +329,46 @@ def search_documents(
                     "content",
                     "",
                 ),
+                "access_scope": payload.get(
+                    "access_scope"
+                ),
+                "access_role": payload.get(
+                    "access_role"
+                ),
                 "retrieval_method": "semantic",
             }
         )
 
     return results
+
+
+def update_document_access_metadata(
+    document_id: int,
+    access_scope: str,
+    access_role: str | None,
+) -> None:
+
+    qdrant_client.set_payload(
+        collection_name=settings.QDRANT_COLLECTION,
+        payload={
+            "access_scope": access_scope,
+            "access_role": access_role,
+        },
+        points=Filter(
+            must=[
+                FieldCondition(
+                    key="document_id",
+                    match=MatchValue(
+                        value=document_id,
+                    ),
+                ),
+            ],
+        ),
+    )
+
+    print(
+        f"Updated access metadata in Qdrant "
+        f"for document {document_id}: "
+        f"scope={access_scope}, "
+        f"role={access_role}"
+    )

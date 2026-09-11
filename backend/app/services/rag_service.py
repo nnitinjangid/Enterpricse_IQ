@@ -173,6 +173,7 @@ def ask_rag(
     question: str,
     db: Session,
     user_id: int,
+    user_role: str,
     top_k: int = 5,
 ) -> dict:
 
@@ -190,6 +191,7 @@ def ask_rag(
         query=question.strip(),
         db=db,
         user_id=user_id,
+        user_role=user_role,
         top_k=max(
             top_k * 2,
             10,

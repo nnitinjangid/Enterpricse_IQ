@@ -1,5 +1,6 @@
 import re
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.document import Document
@@ -8,22 +9,9 @@ from app.models.document_chunk import DocumentChunk
 from rank_bm25 import BM25Okapi
 
 
-# =========================================================
-# Tokenizer
-# =========================================================
-
-def tokenize_text(text: str) -> list[str]:
-    """
-    Convert text into lowercase tokens.
-
-    Example:
-
-    "GST Rate is 18%"
-    
-    becomes approximately:
-
-    ["gst", "rate", "is", "18"]
-    """
+def tokenize_text(
+    text: str,
+) -> list[str]:
 
     if not text:
         return []
@@ -36,69 +24,144 @@ def tokenize_text(text: str) -> list[str]:
     return tokens
 
 
-# =========================================================
-# Keyword Search using BM25
-# =========================================================
-
 def keyword_search(
     query: str,
     db: Session,
     user_id: int,
+    user_role: str,
     top_k: int = 5,
 ) -> list[dict]:
-    """
-    Perform BM25 keyword search over the chunks
-    belonging to the current user's documents.
-    """
 
     if not query or not query.strip():
+
         raise ValueError(
             "Search query cannot be empty."
         )
 
     if top_k <= 0:
+
         raise ValueError(
             "top_k must be greater than 0."
         )
 
-    # =====================================================
-    # Get only current user's document chunks
-    # =====================================================
+    if not user_role:
 
-    chunks = (
-        db.query(DocumentChunk)
-        .join(
-            Document,
-            DocumentChunk.document_id == Document.id,
+        raise ValueError(
+            "user_role is required for "
+            "document authorization."
         )
-        .filter(
-            Document.uploaded_by == user_id
+
+    # -----------------------------------------
+    # DOCUMENT ACCESS FILTER
+    # -----------------------------------------
+    #
+    # ADMIN:
+    #   → All documents
+    #
+    # NORMAL USER:
+    #   1. Own documents
+    #   2. Company documents
+    #   3. Documents shared with their role
+    #
+    # -----------------------------------------
+
+    if user_role == "admin":
+
+        chunks = (
+            db.query(DocumentChunk)
+            .join(
+                Document,
+                DocumentChunk.document_id
+                == Document.id,
+            )
+            .order_by(
+                DocumentChunk.document_id.asc(),
+                DocumentChunk.chunk_index.asc(),
+            )
+            .all()
         )
-        .order_by(
-            DocumentChunk.document_id.asc(),
-            DocumentChunk.chunk_index.asc(),
+
+        print(
+            f"BM25 authorization: "
+            f"admin user {user_id} → all documents"
         )
-        .all()
-    )
+
+    else:
+
+        access_condition = or_(
+            # ---------------------------------
+            # Own documents
+            # ---------------------------------
+
+            Document.uploaded_by == user_id,
+
+            # ---------------------------------
+            # Company-wide documents
+            # ---------------------------------
+
+            Document.access_scope == "company",
+
+            # ---------------------------------
+            # Role-based documents
+            # ---------------------------------
+
+            (
+                (Document.access_scope == "role")
+                &
+                (Document.access_role == user_role)
+            ),
+        )
+
+        chunks = (
+            db.query(DocumentChunk)
+            .join(
+                Document,
+                DocumentChunk.document_id
+                == Document.id,
+            )
+            .filter(
+                access_condition
+            )
+            .order_by(
+                DocumentChunk.document_id.asc(),
+                DocumentChunk.chunk_index.asc(),
+            )
+            .all()
+        )
+
+        print(
+            f"BM25 authorization: "
+            f"user {user_id}, "
+            f"role={user_role} → filtered documents"
+        )
+
+    # -----------------------------------------
+    # NO DOCUMENTS
+    # -----------------------------------------
 
     if not chunks:
+
         return []
 
-    # =====================================================
-    # Prepare Corpus
-    # =====================================================
+    # -----------------------------------------
+    # TOKENIZE CORPUS
+    # -----------------------------------------
 
     corpus = [
-        tokenize_text(chunk.content)
+        tokenize_text(
+            chunk.content
+        )
         for chunk in chunks
     ]
 
-    # Remove empty documents
     valid_items = []
 
-    for index, tokens in enumerate(corpus):
+    for index, tokens in enumerate(
+        corpus
+    ):
 
         if tokens:
+
             valid_items.append(
                 (
                     index,
@@ -107,6 +170,7 @@ def keyword_search(
             )
 
     if not valid_items:
+
         return []
 
     valid_indices = [
@@ -119,36 +183,29 @@ def keyword_search(
         for item in valid_items
     ]
 
-    # =====================================================
-    # Create BM25 Index
-    # =====================================================
+    # -----------------------------------------
+    # BM25
+    # -----------------------------------------
 
     bm25 = BM25Okapi(
         tokenized_corpus
     )
-
-    # =====================================================
-    # Tokenize Query
-    # =====================================================
 
     query_tokens = tokenize_text(
         query
     )
 
     if not query_tokens:
-        return []
 
-    # =====================================================
-    # Calculate BM25 Scores
-    # =====================================================
+        return []
 
     scores = bm25.get_scores(
         query_tokens
     )
 
-    # =====================================================
-    # Sort by BM25 Score
-    # =====================================================
+    # -----------------------------------------
+    # RANK RESULTS
+    # -----------------------------------------
 
     ranked_results = sorted(
         zip(
@@ -159,16 +216,16 @@ def keyword_search(
         reverse=True,
     )
 
-    # =====================================================
-    # Build Results
-    # =====================================================
-
     results = []
+
+    # -----------------------------------------
+    # BUILD RESULTS
+    # -----------------------------------------
 
     for original_index, score in ranked_results:
 
-        # Ignore completely irrelevant chunks
         if score <= 0:
+
             continue
 
         chunk = chunks[
@@ -179,17 +236,36 @@ def keyword_search(
 
         results.append(
             {
-                "score": float(score),
-                "document_id": chunk.document_id,
-                "filename": document.original_filename,
-                "chunk_index": chunk.chunk_index,
-                "page_number": chunk.page_number,
-                "content": chunk.content,
+                "score": float(
+                    score
+                ),
+                "document_id": (
+                    chunk.document_id
+                ),
+                "filename": (
+                    document.original_filename
+                ),
+                "chunk_index": (
+                    chunk.chunk_index
+                ),
+                "page_number": (
+                    chunk.page_number
+                ),
+                "content": (
+                    chunk.content
+                ),
+                "access_scope": (
+                    document.access_scope
+                ),
+                "access_role": (
+                    document.access_role
+                ),
                 "retrieval_method": "bm25",
             }
         )
 
         if len(results) >= top_k:
+
             break
 
     return results

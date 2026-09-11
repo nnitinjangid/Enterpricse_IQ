@@ -8,19 +8,15 @@ from pydantic import BaseModel, Field
 
 from sqlalchemy.orm import Session
 
-from app.agent.graph import (
-    run_agent,
-)
+from app.agent.graph import run_agent
 
-from app.core.database import (
-    get_db,
-)
+from app.core.database import get_db
 
 from app.core.dependencies import (
     get_current_user,
 )
 
-from app.models.user import User
+from app.models import User
 
 
 router = APIRouter(
@@ -29,6 +25,10 @@ router = APIRouter(
 )
 
 
+# =========================================================
+# Agent Request
+# =========================================================
+
 class AgentRequest(BaseModel):
 
     question: str = Field(
@@ -36,6 +36,10 @@ class AgentRequest(BaseModel):
         max_length=2000,
     )
 
+
+# =========================================================
+# Agent Endpoint
+# =========================================================
 
 @router.post("")
 def agent_chat(
@@ -51,80 +55,27 @@ def agent_chat(
         result = run_agent(
             question=request.question,
             user_id=current_user.id,
+            user_role=current_user.role,
             db=db,
         )
 
-        if (
-            result.get(
-                "security_status"
-            )
-            == "blocked"
-        ):
-
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "prompt_injection_detected",
-                    "message": result.get(
-                        "security_message",
-                        "Unsafe request blocked.",
-                    ),
-                },
-            )
-
         return {
             "user_id": current_user.id,
-            "question": result[
-                "question"
-            ],
-            "route": result[
-                "route"
-            ],
-            "confidence": result[
-                "route_confidence"
-            ],
-            "security": {
-                "checked": result.get(
-                    "security_checked",
-                    False,
-                ),
-                "status": result.get(
-                    "security_status",
-                    "unknown",
-                ),
-            },
-            "tools": result.get(
-                "tools",
-                [],
-            ),
-            "plan": result.get(
-                "plan",
-                [],
-            ),
-            "plan_reason": result.get(
-                "plan_reason",
-                "",
-            ),
-            "answer": result[
-                "answer"
-            ],
-            "sources": result.get(
-                "sources",
-                [],
-            ),
-            "tool_results": result.get(
-                "tool_results",
-                {},
-            ),
+            "user_role": current_user.role,
+            **result,
         }
-
-    except HTTPException:
-        raise
 
     except ValueError as e:
 
         raise HTTPException(
             status_code=400,
+            detail=str(e),
+        )
+
+    except PermissionError as e:
+
+        raise HTTPException(
+            status_code=403,
             detail=str(e),
         )
 

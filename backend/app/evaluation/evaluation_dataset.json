@@ -1,0 +1,54 @@
+[
+    {
+        "question": "What is the payment due date for Rahul Enterprises?",
+        "expected_answer": "The payment due date is 17/09/2026.",
+        "relevant_documents": [
+            2
+        ],
+        "relevant_chunks": [
+            [
+                2,
+                1
+            ]
+        ]
+    },
+    {
+        "question": "What is the maximum standard discount allowed for any customer?",
+        "expected_answer": "The maximum standard discount allowed is 20%.",
+        "relevant_documents": [
+            2
+        ],
+        "relevant_chunks": [
+            [
+                2,
+                1
+            ]
+        ]
+    },
+    {
+        "question": "What was the total Q2 sales?",
+        "expected_answer": "The total Q2 sales were INR 7,300,000.",
+        "relevant_documents": [
+            2
+        ],
+        "relevant_chunks": [
+            [
+                2,
+                2
+            ]
+        ]
+    },
+    {
+        "question": "What services does ABC Technologies Pvt. Ltd. provide?",
+        "expected_answer": "ABC Technologies Pvt. Ltd. provides cloud software, data analytics, cybersecurity, and enterprise automation services.",
+        "relevant_documents": [
+            2
+        ],
+        "relevant_chunks": [
+            [
+                2,
+                0
+            ]
+        ]
+    }
+]

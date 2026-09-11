@@ -1,80 +1,77 @@
 from sqlalchemy.orm import Session
 
-from app.services.bm25_service import keyword_search
-from app.services.qdrant_service import search_documents
+from app.services.bm25_service import (
+    keyword_search,
+)
 
+from app.services.qdrant_service import (
+    search_documents,
+)
 
-# =========================================================
-# RRF Configuration
-# =========================================================
 
 RRF_K = 60
 
-
-# =========================================================
-# Hybrid Search
-# =========================================================
 
 def hybrid_search(
     query: str,
     db: Session,
     user_id: int,
+    user_role: str,
     top_k: int = 5,
 ) -> list[dict]:
-    """
-    Combine semantic search and BM25 keyword search
-    using Reciprocal Rank Fusion (RRF).
-    """
 
     if not query or not query.strip():
+
         raise ValueError(
             "Search query cannot be empty."
         )
 
     if top_k <= 0:
+
         raise ValueError(
             "top_k must be greater than 0."
         )
 
-    # =====================================================
-    # Retrieve more candidates from both systems
-    # =====================================================
+    if not user_role:
+
+        raise ValueError(
+            "user_role is required for "
+            "document authorization."
+        )
 
     candidate_k = max(
         top_k * 2,
         10,
     )
 
-    # =====================================================
-    # Semantic Search
-    # =====================================================
+    # -----------------------------------------
+    # SEMANTIC SEARCH
+    # -----------------------------------------
 
     semantic_results = search_documents(
         query=query,
         top_k=candidate_k,
         user_id=user_id,
+        user_role=user_role,
     )
 
-    # =====================================================
-    # BM25 Keyword Search
-    # =====================================================
+    # -----------------------------------------
+    # BM25 SEARCH
+    # -----------------------------------------
 
     keyword_results = keyword_search(
         query=query,
         db=db,
         user_id=user_id,
+        user_role=user_role,
         top_k=candidate_k,
     )
 
-    # =====================================================
-    # RRF Score Storage
-    # =====================================================
-
     combined_results = {}
 
-    # =====================================================
-    # Semantic Ranking
-    # =====================================================
+    # -----------------------------------------
+    # SEMANTIC RANK
+    # -----------------------------------------
 
     for rank, result in enumerate(
         semantic_results,
@@ -105,11 +102,13 @@ def hybrid_search(
 
         combined_results[key][
             "semantic_score"
-        ] = result.get("score")
+        ] = result.get(
+            "score"
+        )
 
-    # =====================================================
-    # BM25 Ranking
-    # =====================================================
+    # -----------------------------------------
+    # BM25 RANK
+    # -----------------------------------------
 
     for rank, result in enumerate(
         keyword_results,
@@ -140,29 +139,33 @@ def hybrid_search(
 
         combined_results[key][
             "keyword_score"
-        ] = result.get("score")
+        ] = result.get(
+            "score"
+        )
 
-    # =====================================================
-    # Sort by RRF Score
-    # =====================================================
+    # -----------------------------------------
+    # FINAL HYBRID RANKING
+    # -----------------------------------------
 
     ranked_results = sorted(
         combined_results.values(),
-        key=lambda item: item["rrf_score"],
+        key=lambda item: item[
+            "rrf_score"
+        ],
         reverse=True,
     )
 
-    # =====================================================
-    # Final Results
-    # =====================================================
-
     final_results = []
 
-    for result in ranked_results[:top_k]:
+    for result in ranked_results[
+        :top_k
+    ]:
 
         final_results.append(
             {
-                "score": result["rrf_score"],
+                "score": result[
+                    "rrf_score"
+                ],
                 "semantic_score": result[
                     "semantic_score"
                 ],
@@ -184,7 +187,15 @@ def hybrid_search(
                 "content": result[
                     "content"
                 ],
-                "retrieval_method": "hybrid",
+                "access_scope": result.get(
+                    "access_scope"
+                ),
+                "access_role": result.get(
+                    "access_role"
+                ),
+                "retrieval_method": (
+                    "hybrid"
+                ),
             }
         )
 
