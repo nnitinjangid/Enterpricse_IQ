@@ -1,0 +1,1625 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="description"
+        content="EnterpriseIQ - Enterprise AI Knowledge Assistant"
+    >
+
+    <title>EnterpriseIQ</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+</head>
+
+
+<body>
+
+
+    <!-- =========================================================
+         AUTHENTICATION SCREEN
+    ========================================================== -->
+
+    <section
+        id="authScreen"
+        class="auth-screen"
+    >
+
+        <div class="auth-container">
+
+            <div class="auth-card">
+
+
+                <!-- LOGO -->
+
+                <div class="auth-logo">
+                    E
+                </div>
+
+
+                <h1>
+                    EnterpriseIQ
+                </h1>
+
+                <p>
+                    Enterprise AI Knowledge Assistant
+                </p>
+
+
+                <!-- =================================================
+                     LOGIN FORM
+                ================================================== -->
+
+                <div
+                    id="loginForm"
+                    class="auth-form"
+                >
+
+                    <div class="form-group">
+
+                        <label for="loginEmail">
+                            Email
+                        </label>
+
+                        <input
+                            type="email"
+                            id="loginEmail"
+                            placeholder="you@example.com"
+                            autocomplete="email"
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="loginPassword">
+                            Password
+                        </label>
+
+                        <input
+                            type="password"
+                            id="loginPassword"
+                            placeholder="Enter your password"
+                            autocomplete="current-password"
+                        >
+
+                    </div>
+
+
+                    <button
+                        id="loginButton"
+                        class="auth-button"
+                        onclick="login()"
+                    >
+                        Login
+                    </button>
+
+
+                    <div
+                        id="loginMessage"
+                        class="auth-message"
+                    ></div>
+
+
+                    <div class="auth-switch">
+
+                        Don't have an account?
+
+                        <button
+                            type="button"
+                            onclick="showRegister()"
+                        >
+                            Register
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- =================================================
+                     REGISTER FORM
+                ================================================== -->
+
+                <div
+                    id="registerForm"
+                    class="auth-form hidden"
+                >
+
+                    <div class="form-group">
+
+                        <label for="registerName">
+                            Full Name
+                        </label>
+
+                        <input
+                            type="text"
+                            id="registerName"
+                            placeholder="Your full name"
+                            autocomplete="name"
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="registerEmail">
+                            Email
+                        </label>
+
+                        <input
+                            type="email"
+                            id="registerEmail"
+                            placeholder="you@example.com"
+                            autocomplete="email"
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="registerPassword">
+                            Password
+                        </label>
+
+                        <input
+                            type="password"
+                            id="registerPassword"
+                            placeholder="Minimum 8 characters"
+                            autocomplete="new-password"
+                        >
+
+                    </div>
+
+
+                    <button
+                        id="registerButton"
+                        class="auth-button"
+                        onclick="register()"
+                    >
+                        Create Account
+                    </button>
+
+
+                    <div
+                        id="registerMessage"
+                        class="auth-message"
+                    ></div>
+
+
+                    <div class="auth-switch">
+
+                        Already have an account?
+
+                        <button
+                            type="button"
+                            onclick="showLogin()"
+                        >
+                            Login
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- =========================================================
+         MAIN APPLICATION
+    ========================================================== -->
+
+    <div
+        id="appScreen"
+        class="hidden"
+    >
+
+
+        <!-- =====================================================
+             SIDEBAR
+        ====================================================== -->
+
+        <aside class="sidebar">
+
+
+            <!-- LOGO -->
+
+            <div class="sidebar-logo">
+
+                <div class="logo-mark">
+                    E
+                </div>
+
+                <div class="logo-text">
+                    EnterpriseIQ
+                </div>
+
+            </div>
+
+
+
+            <!-- NAVIGATION -->
+
+            <nav class="sidebar-nav">
+
+                <ul>
+
+
+                    <!-- DASHBOARD -->
+
+                    <li>
+
+                        <button
+                            class="active"
+                            data-page="dashboard"
+                            onclick="showPage('dashboard')"
+                        >
+
+                            <span class="nav-icon">
+                                ▦
+                            </span>
+
+                            Dashboard
+
+                        </button>
+
+                    </li>
+
+
+                    <!-- CHAT -->
+
+                    <li>
+
+                        <button
+                            data-page="chat"
+                            onclick="showPage('chat')"
+                        >
+
+                            <span class="nav-icon">
+                                ◉
+                            </span>
+
+                            Chat
+
+                        </button>
+
+                    </li>
+
+
+                    <!-- DOCUMENTS -->
+
+                    <li>
+
+                        <button
+                            data-page="documents"
+                            onclick="showPage('documents')"
+                        >
+
+                            <span class="nav-icon">
+                                ▤
+                            </span>
+
+                            Documents
+
+                        </button>
+
+                    </li>
+
+
+                    <!-- EVALUATIONS -->
+
+                    <li>
+
+                        <button
+                            data-page="evaluations"
+                            onclick="showPage('evaluations')"
+                        >
+
+                            <span class="nav-icon">
+                                ◌
+                            </span>
+
+                            Evaluations
+
+                        </button>
+
+                    </li>
+
+
+                    <!-- ADMIN -->
+
+                    <li>
+
+                        <button
+                            id="adminNav"
+                            class="hidden"
+                            data-page="admin"
+                            onclick="showPage('admin')"
+                        >
+
+                            <span class="nav-icon">
+                                ⚙
+                            </span>
+
+                            Admin
+
+                        </button>
+
+                    </li>
+
+                </ul>
+
+            </nav>
+
+
+
+            <!-- USER AREA -->
+
+            <div class="sidebar-user">
+
+                <div class="sidebar-user-info">
+
+
+                    <div
+                        id="userAvatar"
+                        class="user-avatar"
+                    >
+                        U
+                    </div>
+
+
+                    <div class="sidebar-user-text">
+
+                        <div
+                            id="sidebarUserName"
+                            class="sidebar-user-name"
+                        >
+                            User
+                        </div>
+
+
+                        <div
+                            id="sidebarUserRole"
+                            class="sidebar-user-role"
+                        >
+                            user
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <button
+                    onclick="logout()"
+                    style="
+                        width: 100%;
+                        margin-top: 12px;
+                        padding: 8px;
+                        border: 1px solid rgba(255,255,255,0.10);
+                        border-radius: 8px;
+                        background: transparent;
+                        color: #98a2b3;
+                        font-size: 12px;
+                    "
+                >
+                    Logout
+                </button>
+
+            </div>
+
+        </aside>
+
+
+
+        <!-- =====================================================
+             MAIN CONTENT
+        ====================================================== -->
+
+        <main class="main-content">
+
+
+            <!-- =================================================
+                 TOPBAR
+            ================================================== -->
+
+            <header class="topbar">
+
+
+                <div class="page-heading">
+
+                    <h1 id="pageTitle">
+                        Dashboard
+                    </h1>
+
+                    <p id="pageSubtitle">
+                        Enterprise intelligence at your fingertips.
+                    </p>
+
+                </div>
+
+
+                <div class="topbar-right">
+
+
+                    <!-- BACKEND STATUS -->
+
+                    <div id="backendStatus">
+
+                        <span class="status-dot"></span>
+
+                        Checking backend...
+
+                    </div>
+
+
+                    <!-- USER -->
+
+                    <div class="top-user">
+
+                        <span id="topUserName">
+                            User
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </header>
+
+
+
+            <!-- =================================================
+                 PAGE CONTAINER
+            ================================================== -->
+
+            <div class="page-container">
+
+
+
+                <!-- =================================================
+                     DASHBOARD
+                ================================================== -->
+
+                <section
+                    id="dashboardPage"
+                    class="page active-page"
+                >
+
+
+                    <!-- WELCOME -->
+
+                    <div
+                        class="card"
+                        style="
+                            padding: 28px;
+                            margin-bottom: 20px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 20px;
+                        "
+                    >
+
+                        <div>
+
+                            <span
+                                style="
+                                    color: #4f46e5;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    letter-spacing: 1px;
+                                "
+                            >
+                                ENTERPRISE AI PLATFORM
+                            </span>
+
+
+                            <h2
+                                style="
+                                    margin-top: 8px;
+                                    font-size: 25px;
+                                    letter-spacing: -0.5px;
+                                "
+                            >
+                                Welcome,
+                                <span id="welcomeUser">
+                                    User
+                                </span>
+                            </h2>
+
+
+                            <p
+                                style="
+                                    margin-top: 7px;
+                                    max-width: 650px;
+                                    color: #667085;
+                                    font-size: 13px;
+                                    line-height: 1.6;
+                                "
+                            >
+                                Ask questions across enterprise
+                                documents and structured data,
+                                with grounded answers and source
+                                citations.
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            id="dashboardChatButton"
+                            onclick="showPage('chat')"
+                            style="
+                                flex-shrink: 0;
+                                height: 42px;
+                                padding: 0 18px;
+                                border: none;
+                                border-radius: 9px;
+                                background: #4f46e5;
+                                color: white;
+                                font-size: 12px;
+                                font-weight: 650;
+                            "
+                        >
+                            Start Chat
+                        </button>
+
+                    </div>
+
+
+
+                    <!-- SYSTEM STATS -->
+
+                    <div class="dashboard-grid">
+
+
+                        <div class="stat-card">
+
+                            <span class="card-label">
+                                Documents
+                            </span>
+
+                            <div
+                                id="documentCount"
+                                class="card-value"
+                            >
+                                --
+                            </div>
+
+                            <span class="card-description">
+                                Available to you
+                            </span>
+
+                        </div>
+
+
+                        <div class="stat-card">
+
+                            <span class="card-label">
+                                Retrieval
+                            </span>
+
+                            <div class="card-value">
+                                Hybrid
+                            </div>
+
+                            <span class="card-description">
+                                Semantic + BM25
+                            </span>
+
+                        </div>
+
+
+                        <div class="stat-card">
+
+                            <span class="card-label">
+                                Reranking
+                            </span>
+
+                            <div class="card-value">
+                                Active
+                            </div>
+
+                            <span class="card-description">
+                                Cross Encoder
+                            </span>
+
+                        </div>
+
+
+                        <div class="stat-card">
+
+                            <span class="card-label">
+                                Agent
+                            </span>
+
+                            <div class="card-value">
+                                Active
+                            </div>
+
+                            <span class="card-description">
+                                LangGraph
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- DASHBOARD INFORMATION -->
+
+                    <div
+                        style="
+                            display: grid;
+                            grid-template-columns:
+                                repeat(2, minmax(0, 1fr));
+                            gap: 18px;
+                            margin-top: 20px;
+                        "
+                    >
+
+
+                        <!-- QUICK ACTIONS -->
+
+                        <div class="card">
+
+                            <div class="card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Quick Actions
+                                    </h3>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="card-body">
+
+
+                                <button
+                                    onclick="showPage('chat')"
+                                    style="
+                                        width: 100%;
+                                        padding: 14px;
+                                        margin-bottom: 9px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                        background: white;
+                                        text-align: left;
+                                    "
+                                >
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            font-size: 13px;
+                                            color: #101828;
+                                        "
+                                    >
+                                        Ask a Question
+                                    </strong>
+
+                                    <small
+                                        style="
+                                            display: block;
+                                            margin-top: 3px;
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Query enterprise knowledge
+                                    </small>
+
+                                </button>
+
+
+                                <button
+                                    onclick="showPage('documents')"
+                                    style="
+                                        width: 100%;
+                                        padding: 14px;
+                                        margin-bottom: 9px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                        background: white;
+                                        text-align: left;
+                                    "
+                                >
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            font-size: 13px;
+                                            color: #101828;
+                                        "
+                                    >
+                                        Upload Document
+                                    </strong>
+
+                                    <small
+                                        style="
+                                            display: block;
+                                            margin-top: 3px;
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Add PDF, DOCX, CSV or XLSX
+                                    </small>
+
+                                </button>
+
+
+                                <button
+                                    onclick="showPage('evaluations')"
+                                    style="
+                                        width: 100%;
+                                        padding: 14px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                        background: white;
+                                        text-align: left;
+                                    "
+                                >
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            font-size: 13px;
+                                            color: #101828;
+                                        "
+                                    >
+                                        View Evaluation
+                                    </strong>
+
+                                    <small
+                                        style="
+                                            display: block;
+                                            margin-top: 3px;
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Check AI performance
+                                    </small>
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+
+
+                        <!-- ARCHITECTURE -->
+
+                        <div class="card">
+
+                            <div class="card-header">
+
+                                <div>
+
+                                    <h3>
+                                        Agent Architecture
+                                    </h3>
+
+                                </div>
+
+                            </div>
+
+
+                            <div
+                                class="card-body"
+                                style="text-align: center;"
+                            >
+
+                                <div
+                                    style="
+                                        display: inline-block;
+                                        padding: 9px 18px;
+                                        border-radius: 8px;
+                                        background: #f2f4f7;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                    "
+                                >
+                                    User Query
+                                </div>
+
+
+                                <div
+                                    style="
+                                        margin: 7px 0;
+                                        color: #98a2b3;
+                                    "
+                                >
+                                    ↓
+                                </div>
+
+
+                                <div
+                                    style="
+                                        display: inline-block;
+                                        padding: 9px 18px;
+                                        border-radius: 8px;
+                                        background: #eef2ff;
+                                        color: #4f46e5;
+                                        font-size: 12px;
+                                        font-weight: 650;
+                                    "
+                                >
+                                    Security
+                                </div>
+
+
+                                <div
+                                    style="
+                                        margin: 7px 0;
+                                        color: #98a2b3;
+                                    "
+                                >
+                                    ↓
+                                </div>
+
+
+                                <div
+                                    style="
+                                        display: inline-block;
+                                        padding: 9px 18px;
+                                        border-radius: 8px;
+                                        background: #eef2ff;
+                                        color: #4f46e5;
+                                        font-size: 12px;
+                                        font-weight: 650;
+                                    "
+                                >
+                                    LangGraph Router
+                                </div>
+
+
+                                <div
+                                    style="
+                                        display: flex;
+                                        justify-content: center;
+                                        gap: 8px;
+                                        margin-top: 15px;
+                                        flex-wrap: wrap;
+                                    "
+                                >
+
+                                    <span
+                                        style="
+                                            padding: 5px 9px;
+                                            border-radius: 6px;
+                                            background: #f2f4f7;
+                                            font-size: 10px;
+                                            font-weight: 650;
+                                        "
+                                    >
+                                        RAG
+                                    </span>
+
+                                    <span
+                                        style="
+                                            padding: 5px 9px;
+                                            border-radius: 6px;
+                                            background: #f2f4f7;
+                                            font-size: 10px;
+                                            font-weight: 650;
+                                        "
+                                    >
+                                        SQL
+                                    </span>
+
+                                    <span
+                                        style="
+                                            padding: 5px 9px;
+                                            border-radius: 6px;
+                                            background: #f2f4f7;
+                                            font-size: 10px;
+                                            font-weight: 650;
+                                        "
+                                    >
+                                        Calculator
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =================================================
+                     CHAT
+                ================================================== -->
+
+                <section
+                    id="chatPage"
+                    class="page"
+                >
+
+                    <div class="chat-container">
+
+
+                        <div class="chat-header">
+
+                            <h2>
+                                EnterpriseIQ Agent
+                            </h2>
+
+                            <p>
+                                Ask questions across enterprise
+                                documents and structured data.
+                            </p>
+
+                        </div>
+
+
+                        <div
+                            id="chatMessages"
+                            class="chat-messages"
+                        >
+
+
+                            <!-- EMPTY STATE -->
+
+                            <div
+                                id="chatEmpty"
+                                class="chat-empty"
+                            >
+
+                                <div class="chat-empty-icon">
+                                    ✦
+                                </div>
+
+
+                                <h2>
+                                    Ask EnterpriseIQ
+                                </h2>
+
+
+                                <p>
+                                    Ask questions about your
+                                    enterprise documents and data.
+                                </p>
+
+
+                                <div class="example-questions">
+
+
+                                    <button
+                                        onclick="useExample('What is the payment due date for Rahul Enterprises?')"
+                                    >
+                                        What is the payment due date
+                                        for Rahul Enterprises?
+                                    </button>
+
+
+                                    <button
+                                        onclick="useExample('What is the total sales for Q2 2026?')"
+                                    >
+                                        What is the total sales
+                                        for Q2 2026?
+                                    </button>
+
+
+                                    <button
+                                        onclick="useExample('What is the maximum standard discount allowed?')"
+                                    >
+                                        What is the maximum
+                                        standard discount allowed?
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- CHAT INPUT -->
+
+                        <div class="chat-input-area">
+
+                            <textarea
+                                id="chatInput"
+                                rows="2"
+                                placeholder="Ask a question..."
+                                aria-label="Ask EnterpriseIQ"
+                            ></textarea>
+
+
+                            <button
+                                id="sendButton"
+                                onclick="sendChat()"
+                            >
+                                Send
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =================================================
+                     DOCUMENTS
+                ================================================== -->
+
+                <section
+                    id="documentsPage"
+                    class="page"
+                >
+
+
+                    <div
+                        style="
+                            margin-bottom: 20px;
+                        "
+                    >
+
+                        <h2
+                            style="
+                                font-size: 20px;
+                                letter-spacing: -0.3px;
+                            "
+                        >
+                            Documents
+                        </h2>
+
+                        <p
+                            style="
+                                margin-top: 4px;
+                                color: #667085;
+                                font-size: 12px;
+                            "
+                        >
+                            Upload and manage your enterprise
+                            documents.
+                        </p>
+
+                    </div>
+
+
+
+                    <!-- UPLOAD -->
+
+                    <div
+                        class="upload-card"
+                        style="margin-bottom: 20px;"
+                    >
+
+                        <h2>
+                            Upload a document
+                        </h2>
+
+                        <p>
+                            Supported formats: PDF, DOCX, CSV, XLSX
+                        </p>
+
+
+                        <div class="upload-area">
+
+
+                            <input
+                                type="file"
+                                id="documentFile"
+                                accept=".pdf,.docx,.csv,.xlsx"
+                            >
+
+
+                            <div>
+
+                                <button
+                                    id="uploadButton"
+                                    onclick="uploadDocument()"
+                                >
+                                    Upload Document
+                                </button>
+
+                            </div>
+
+
+                            <div
+                                id="uploadMessage"
+                            ></div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- DOCUMENT LIST -->
+
+                    <div class="documents-card">
+
+
+                        <div class="documents-card-header">
+
+                            <div>
+
+                                <h2>
+                                    Your Documents
+                                </h2>
+
+                            </div>
+
+
+                            <div
+                                style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 10px;
+                                "
+                            >
+
+                                <span id="documentCount">
+                                    0
+                                </span>
+
+
+                                <button
+                                    onclick="loadDocuments()"
+                                    style="
+                                        padding: 7px 11px;
+                                        border: 1px solid #d0d5dd;
+                                        border-radius: 7px;
+                                        background: white;
+                                        color: #344054;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                    "
+                                >
+                                    Refresh
+                                </button>
+
+                            </div>
+
+                        </div>
+
+
+                        <div id="documentsTable">
+
+                            <div class="loading">
+                                Loading documents...
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =================================================
+                     EVALUATIONS
+                ================================================== -->
+
+                <section
+                    id="evaluationsPage"
+                    class="page"
+                >
+
+
+                    <div
+                        style="
+                            margin-bottom: 20px;
+                        "
+                    >
+
+                        <h2
+                            style="
+                                font-size: 20px;
+                                letter-spacing: -0.3px;
+                            "
+                        >
+                            Evaluation
+                        </h2>
+
+                        <p
+                            style="
+                                margin-top: 4px;
+                                color: #667085;
+                                font-size: 12px;
+                            "
+                        >
+                            Current EnterpriseIQ evaluation performance.
+                        </p>
+
+                    </div>
+
+
+
+                    <!-- AGENT METRICS -->
+
+                    <div class="evaluation-grid">
+
+
+                        <div class="metric-card">
+
+                            <h3>
+                                Route Accuracy
+                            </h3>
+
+                            <div class="metric-value">
+                                100%
+                            </div>
+
+                            <span
+                                class="card-description"
+                            >
+                                Agent routing
+                            </span>
+
+                        </div>
+
+
+                        <div class="metric-card">
+
+                            <h3>
+                                Tool Selection
+                            </h3>
+
+                            <div class="metric-value">
+                                100%
+                            </div>
+
+                            <span
+                                class="card-description"
+                            >
+                                Correct tools selected
+                            </span>
+
+                        </div>
+
+
+                        <div class="metric-card">
+
+                            <h3>
+                                Tool Execution
+                            </h3>
+
+                            <div class="metric-value">
+                                100%
+                            </div>
+
+                            <span
+                                class="card-description"
+                            >
+                                Tool execution accuracy
+                            </span>
+
+                        </div>
+
+
+                        <div class="metric-card">
+
+                            <h3>
+                                Final Answer
+                            </h3>
+
+                            <div class="metric-value">
+                                100%
+                            </div>
+
+                            <span
+                                class="card-description"
+                            >
+                                Expected answer accuracy
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- RETRIEVAL -->
+
+                    <div
+                        class="card"
+                        style="margin-top: 20px;"
+                    >
+
+                        <div class="card-header">
+
+                            <div>
+
+                                <h3>
+                                    Retrieval Metrics
+                                </h3>
+
+                                <p
+                                    style="
+                                        margin-top: 4px;
+                                        color: #667085;
+                                        font-size: 11px;
+                                    "
+                                >
+                                    Current retrieval evaluation results.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="card-body">
+
+
+                            <div
+                                style="
+                                    display: grid;
+                                    grid-template-columns:
+                                        repeat(
+                                            4,
+                                            minmax(0, 1fr)
+                                        );
+                                    gap: 12px;
+                                "
+                            >
+
+
+                                <div
+                                    style="
+                                        padding: 15px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                    "
+                                >
+
+                                    <span
+                                        style="
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Precision@3
+                                    </span>
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            margin-top: 6px;
+                                            font-size: 19px;
+                                        "
+                                    >
+                                        0.3333
+                                    </strong>
+
+                                </div>
+
+
+                                <div
+                                    style="
+                                        padding: 15px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                    "
+                                >
+
+                                    <span
+                                        style="
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Recall@3
+                                    </span>
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            margin-top: 6px;
+                                            font-size: 19px;
+                                        "
+                                    >
+                                        1.0000
+                                    </strong>
+
+                                </div>
+
+
+                                <div
+                                    style="
+                                        padding: 15px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                    "
+                                >
+
+                                    <span
+                                        style="
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        Hit Rate@3
+                                    </span>
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            margin-top: 6px;
+                                            font-size: 19px;
+                                        "
+                                    >
+                                        1.0000
+                                    </strong>
+
+                                </div>
+
+
+                                <div
+                                    style="
+                                        padding: 15px;
+                                        border: 1px solid #eaecf0;
+                                        border-radius: 9px;
+                                    "
+                                >
+
+                                    <span
+                                        style="
+                                            color: #667085;
+                                            font-size: 11px;
+                                        "
+                                    >
+                                        MRR
+                                    </span>
+
+                                    <strong
+                                        style="
+                                            display: block;
+                                            margin-top: 6px;
+                                            font-size: 19px;
+                                        "
+                                    >
+                                        0.8750
+                                    </strong>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+
+                <!-- =================================================
+                     ADMIN
+                ================================================== -->
+
+                <section
+                    id="adminPage"
+                    class="page"
+                >
+
+
+                    <div
+                        style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-bottom: 20px;
+                        "
+                    >
+
+                        <div>
+
+                            <h2
+                                style="
+                                    font-size: 20px;
+                                    letter-spacing: -0.3px;
+                                "
+                            >
+                                Admin
+                            </h2>
+
+                            <p
+                                style="
+                                    margin-top: 4px;
+                                    color: #667085;
+                                    font-size: 12px;
+                                "
+                            >
+                                Manage EnterpriseIQ users.
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            onclick="loadUsers()"
+                            style="
+                                padding: 8px 12px;
+                                border: 1px solid #d0d5dd;
+                                border-radius: 7px;
+                                background: white;
+                                color: #344054;
+                                font-size: 11px;
+                                font-weight: 600;
+                            "
+                        >
+                            Refresh
+                        </button>
+
+                    </div>
+
+
+
+                    <div class="documents-card">
+
+                        <div
+                            id="usersTable"
+                        >
+
+                            <div class="loading">
+                                Loading users...
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+            </div>
+
+        </main>
+
+    </div>
+
+
+
+    <!-- =========================================================
+         JAVASCRIPT
+    ========================================================== -->
+
+    <script src="app.js"></script>
+
+
+</body>
+
+</html>
+
