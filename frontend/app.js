@@ -1,269 +1,230 @@
+// ============================================================
+// ENTERPRISEIQ - COMPLETE FRONTEND APP.JS
+// ============================================================
+
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+const TOKEN_KEY = "enterpriseiq_token";
+const USER_KEY = "enterpriseiq_user";
+
 let currentUser = null;
-let authToken = localStorage.getItem("enterpriseiq_token") || "";
 
 
 // ============================================================
-// HELPER
+// INITIALIZATION
 // ============================================================
 
-function $(id) {
-    return document.getElementById(id);
-}
+document.addEventListener("DOMContentLoaded", async () => {
+
+    const token = localStorage.getItem(TOKEN_KEY);
+
+    if (token) {
+
+        try {
+
+            const user = await apiRequest(
+                "/api/auth/me"
+            );
+
+            currentUser = user;
+
+            localStorage.setItem(
+                USER_KEY,
+                JSON.stringify(user)
+            );
+
+            showApplication();
+
+        } catch (error) {
+
+            console.error(
+                "Session validation failed:",
+                error
+            );
+
+            logout();
+
+        }
+
+    } else {
+
+        showLogin();
+
+    }
+
+    checkBackendStatus();
+
+    const chatInput =
+        document.getElementById("chatInput");
+
+    if (chatInput) {
+
+        chatInput.addEventListener(
+            "keydown",
+            function (event) {
+
+                if (
+                    event.key === "Enter" &&
+                    !event.shiftKey
+                ) {
+
+                    event.preventDefault();
+
+                    sendChat();
+
+                }
+
+            }
+        );
+
+    }
+
+});
 
 
 // ============================================================
 // API REQUEST
 // ============================================================
 
-async function apiRequest(endpoint, options = {}) {
+async function apiRequest(
+    endpoint,
+    options = {}
+) {
 
     const headers = {
         ...(options.headers || {})
     };
 
-    if (authToken) {
-        headers["Authorization"] = `Bearer ${authToken}`;
+    const token =
+        localStorage.getItem(TOKEN_KEY);
+
+    if (token) {
+
+        headers.Authorization =
+            `Bearer ${token}`;
+
     }
 
     if (
         options.body &&
         !(options.body instanceof FormData)
     ) {
-        headers["Content-Type"] = "application/json";
+
+        headers["Content-Type"] =
+            "application/json";
+
     }
 
-    const response = await fetch(
-        `${API_BASE_URL}${endpoint}`,
-        {
-            ...options,
-            headers
-        }
-    );
+    let response;
+
+    try {
+
+        response = await fetch(
+            `${API_BASE_URL}${endpoint}`,
+            {
+                ...options,
+                headers
+            }
+        );
+
+    } catch (error) {
+
+        throw new Error(
+            "Unable to connect to backend."
+        );
+
+    }
 
     let data = null;
 
     try {
+
         data = await response.json();
-    } catch {
+
+    } catch (error) {
+
         data = null;
+
     }
 
     if (!response.ok) {
 
-        let message = "Request failed.";
+        let message =
+            data?.detail ||
+            data?.message ||
+            `Request failed with status ${response.status}`;
 
-        if (data) {
+        if (Array.isArray(message)) {
 
-            if (typeof data.detail === "string") {
-                message = data.detail;
-            } else if (data.message) {
-                message = data.message;
-            }
+            message =
+                message
+                    .map(item =>
+                        item.msg || String(item)
+                    )
+                    .join(", ");
+
         }
 
-        const error = new Error(message);
-        error.status = response.status;
+        throw new Error(message);
 
-        throw error;
     }
 
     return data;
+
 }
 
 
 // ============================================================
-// AUTH SCREEN
+// AUTH - SHOW LOGIN
 // ============================================================
 
-function showAuthScreen() {
+function showLogin() {
 
-    const authScreen = $("authScreen");
-    const appScreen = $("appScreen");
+    const loginForm =
+        document.getElementById("loginForm");
 
-    if (authScreen) {
-        authScreen.classList.remove("hidden");
+    const registerForm =
+        document.getElementById("registerForm");
+
+    if (loginForm) {
+
+        loginForm.classList.remove("hidden");
+
     }
 
-    if (appScreen) {
-        appScreen.classList.add("hidden");
-    }
-}
+    if (registerForm) {
 
+        registerForm.classList.add("hidden");
 
-function showAppScreen() {
-
-    const authScreen = $("authScreen");
-    const appScreen = $("appScreen");
-
-    if (authScreen) {
-        authScreen.classList.add("hidden");
     }
 
-    if (appScreen) {
-        appScreen.classList.remove("hidden");
-    }
 }
 
 
 // ============================================================
-// LOGIN / REGISTER SWITCH
+// AUTH - SHOW REGISTER
 // ============================================================
 
 function showRegister() {
 
-    const loginForm = $("loginForm");
-    const registerForm = $("registerForm");
+    const loginForm =
+        document.getElementById("loginForm");
+
+    const registerForm =
+        document.getElementById("registerForm");
 
     if (loginForm) {
+
         loginForm.classList.add("hidden");
+
     }
 
     if (registerForm) {
+
         registerForm.classList.remove("hidden");
+
     }
 
-    clearMessage($("loginMessage"));
-    clearMessage($("registerMessage"));
-}
-
-
-function showLogin() {
-
-    const loginForm = $("loginForm");
-    const registerForm = $("registerForm");
-
-    if (registerForm) {
-        registerForm.classList.add("hidden");
-    }
-
-    if (loginForm) {
-        loginForm.classList.remove("hidden");
-    }
-
-    clearMessage($("loginMessage"));
-    clearMessage($("registerMessage"));
-}
-
-
-// ============================================================
-// CURRENT USER
-// ============================================================
-
-async function loadCurrentUser() {
-
-    if (!authToken) {
-        showAuthScreen();
-        return;
-    }
-
-    try {
-
-        currentUser = await apiRequest(
-            "/api/auth/me"
-        );
-
-        showAppScreen();
-
-        updateUserUI();
-
-        showPage("dashboard");
-
-        await checkBackendHealth();
-
-        await loadDocuments();
-
-    } catch (error) {
-
-        console.error(
-            "Authentication failed:",
-            error
-        );
-
-        logout();
-    }
-}
-
-
-// ============================================================
-// USER UI
-// ============================================================
-
-function updateUserUI() {
-
-    if (!currentUser) {
-        return;
-    }
-
-    const name =
-        currentUser.full_name ||
-        currentUser.email ||
-        "User";
-
-    const role =
-        currentUser.role ||
-        "user";
-
-    const nameElements = [
-        $("welcomeUser"),
-        $("sidebarUserName"),
-        $("topUserName")
-    ];
-
-    nameElements.forEach(
-        element => {
-
-            if (element) {
-                element.textContent = name;
-            }
-        }
-    );
-
-    const roleElement = $("sidebarUserRole");
-
-    if (roleElement) {
-        roleElement.textContent = role;
-    }
-
-    const avatar = $("userAvatar");
-
-    if (avatar) {
-        avatar.textContent =
-            name.charAt(0).toUpperCase();
-    }
-
-    const adminNav = $("adminNav");
-
-    if (adminNav) {
-
-        if (role === "admin") {
-
-            adminNav.classList.remove("hidden");
-
-        } else {
-
-            adminNav.classList.add("hidden");
-        }
-    }
-}
-
-
-// ============================================================
-// LOGOUT
-// ============================================================
-
-function logout() {
-
-    authToken = "";
-    currentUser = null;
-
-    localStorage.removeItem(
-        "enterpriseiq_token"
-    );
-
-    showAuthScreen();
-    showLogin();
 }
 
 
@@ -273,86 +234,112 @@ function logout() {
 
 async function login() {
 
-    const emailInput = $("loginEmail");
-    const passwordInput = $("loginPassword");
-    const message = $("loginMessage");
-    const button = $("loginButton");
-
     const email =
-        emailInput
-            ? emailInput.value.trim()
-            : "";
+        document
+            .getElementById("loginEmail")
+            .value
+            .trim();
 
     const password =
-        passwordInput
-            ? passwordInput.value
-            : "";
+        document
+            .getElementById("loginPassword")
+            .value;
+
+    const message =
+        document.getElementById(
+            "loginMessage"
+        );
+
+    const button =
+        document.getElementById(
+            "loginButton"
+        );
 
     if (!email || !password) {
 
-        showMessage(
-            message,
-            "Please enter email and password.",
-            "error"
-        );
+        if (message) {
+
+            message.textContent =
+                "Please enter email and password.";
+
+        }
 
         return;
+
     }
-
-    if (button) {
-
-        button.disabled = true;
-        button.textContent = "Logging in...";
-    }
-
-    clearMessage(message);
 
     try {
 
-        const data = await apiRequest(
-            "/api/auth/login",
-            {
-                method: "POST",
-                body: JSON.stringify({
-                    email,
-                    password
-                })
-            }
-        );
+        if (button) {
 
-        authToken = data.access_token;
+            button.disabled = true;
+            button.textContent = "Logging in...";
+
+        }
+
+        if (message) {
+
+            message.textContent = "";
+
+        }
+
+        const data =
+            await apiRequest(
+                "/api/auth/login",
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        email,
+                        password
+                    })
+                }
+            );
+
+        const token =
+            data.access_token ||
+            data.token;
+
+        if (!token) {
+
+            throw new Error(
+                "Login successful but token was not returned."
+            );
+
+        }
 
         localStorage.setItem(
-            "enterpriseiq_token",
-            authToken
+            TOKEN_KEY,
+            token
         );
 
-        currentUser = await apiRequest(
-            "/api/auth/me"
+        const user =
+            data.user ||
+            await apiRequest(
+                "/api/auth/me"
+            );
+
+        currentUser = user;
+
+        localStorage.setItem(
+            USER_KEY,
+            JSON.stringify(user)
         );
 
-        showAppScreen();
-
-        updateUserUI();
-
-        showPage("dashboard");
-
-        await checkBackendHealth();
-
-        await loadDocuments();
+        showApplication();
 
     } catch (error) {
 
         console.error(
-            "Login failed:",
+            "Login error:",
             error
         );
 
-        showMessage(
-            message,
-            error.message,
-            "error"
-        );
+        if (message) {
+
+            message.textContent =
+                error.message;
+
+        }
 
     } finally {
 
@@ -360,8 +347,11 @@ async function login() {
 
             button.disabled = false;
             button.textContent = "Login";
+
         }
+
     }
+
 }
 
 
@@ -371,62 +361,74 @@ async function login() {
 
 async function register() {
 
-    const nameInput = $("registerName");
-    const emailInput = $("registerEmail");
-    const passwordInput = $("registerPassword");
-    const message = $("registerMessage");
-    const button = $("registerButton");
-
     const fullName =
-        nameInput
-            ? nameInput.value.trim()
-            : "";
+        document
+            .getElementById("registerName")
+            .value
+            .trim();
 
     const email =
-        emailInput
-            ? emailInput.value.trim()
-            : "";
+        document
+            .getElementById("registerEmail")
+            .value
+            .trim();
 
     const password =
-        passwordInput
-            ? passwordInput.value
-            : "";
+        document
+            .getElementById("registerPassword")
+            .value;
 
-    if (
-        !fullName ||
-        !email ||
-        !password
-    ) {
-
-        showMessage(
-            message,
-            "Please fill all fields.",
-            "error"
+    const message =
+        document.getElementById(
+            "registerMessage"
         );
 
+    const button =
+        document.getElementById(
+            "registerButton"
+        );
+
+    if (!fullName || !email || !password) {
+
+        if (message) {
+
+            message.textContent =
+                "Please fill all fields.";
+
+        }
+
         return;
+
     }
 
     if (password.length < 8) {
 
-        showMessage(
-            message,
-            "Password must contain at least 8 characters.",
-            "error"
-        );
+        if (message) {
+
+            message.textContent =
+                "Password must contain at least 8 characters.";
+
+        }
 
         return;
+
     }
-
-    if (button) {
-
-        button.disabled = true;
-        button.textContent = "Creating...";
-    }
-
-    clearMessage(message);
 
     try {
+
+        if (button) {
+
+            button.disabled = true;
+            button.textContent =
+                "Creating Account...";
+
+        }
+
+        if (message) {
+
+            message.textContent = "";
+
+        }
 
         await apiRequest(
             "/api/auth/register",
@@ -440,82 +442,260 @@ async function register() {
             }
         );
 
-        showMessage(
-            message,
-            "Registration successful. Please login.",
-            "success"
-        );
+        if (message) {
 
-        if ($("loginEmail")) {
-            $("loginEmail").value = email;
+            message.textContent =
+                "Account created successfully. Please login.";
+
         }
 
-        if ($("loginPassword")) {
-            $("loginPassword").value = "";
+        const loginEmail =
+            document.getElementById(
+                "loginEmail"
+            );
+
+        if (loginEmail) {
+
+            loginEmail.value =
+                email;
+
         }
+
+        document
+            .getElementById("registerName")
+            .value = "";
+
+        document
+            .getElementById("registerEmail")
+            .value = "";
+
+        document
+            .getElementById("registerPassword")
+            .value = "";
 
         setTimeout(
             () => {
                 showLogin();
             },
-            800
+            1000
         );
 
     } catch (error) {
 
         console.error(
-            "Registration failed:",
+            "Registration error:",
             error
         );
 
-        showMessage(
-            message,
-            error.message,
-            "error"
-        );
+        if (message) {
+
+            message.textContent =
+                error.message;
+
+        }
 
     } finally {
 
         if (button) {
 
             button.disabled = false;
-            button.textContent = "Create Account";
+            button.textContent =
+                "Create Account";
+
         }
+
     }
+
 }
 
 
 // ============================================================
-// MESSAGE HELPERS
+// SHOW APPLICATION
 // ============================================================
 
-function showMessage(
-    element,
-    text,
-    type = "info"
-) {
+function showApplication() {
 
-    if (!element) {
-        return;
+    const authScreen =
+        document.getElementById(
+            "authScreen"
+        );
+
+    const appScreen =
+        document.getElementById(
+            "appScreen"
+        );
+
+    if (authScreen) {
+
+        authScreen.classList.add("hidden");
+
     }
 
-    element.textContent = text;
+    if (appScreen) {
 
-    element.className =
-        `auth-message ${type}`;
+        appScreen.classList.remove("hidden");
+
+    }
+
+    updateUserUI();
+
+    showPage("dashboard");
+
+    loadDocuments();
+
 }
 
 
-function clearMessage(element) {
+// ============================================================
+// USER UI
+// ============================================================
 
-    if (!element) {
+function updateUserUI() {
+
+    if (!currentUser) {
+
         return;
+
     }
 
-    element.textContent = "";
+    const name =
+        currentUser.full_name ||
+        currentUser.name ||
+        currentUser.email ||
+        "User";
 
-    element.className =
-        "auth-message";
+    const role =
+        currentUser.role ||
+        "user";
+
+    const sidebarName =
+        document.getElementById(
+            "sidebarUserName"
+        );
+
+    const sidebarRole =
+        document.getElementById(
+            "sidebarUserRole"
+        );
+
+    const topName =
+        document.getElementById(
+            "topUserName"
+        );
+
+    const welcomeName =
+        document.getElementById(
+            "welcomeUser"
+        );
+
+    const avatar =
+        document.getElementById(
+            "userAvatar"
+        );
+
+    const adminNav =
+        document.getElementById(
+            "adminNav"
+        );
+
+    if (sidebarName) {
+
+        sidebarName.textContent =
+            name;
+
+    }
+
+    if (sidebarRole) {
+
+        sidebarRole.textContent =
+            role;
+
+    }
+
+    if (topName) {
+
+        topName.textContent =
+            name;
+
+    }
+
+    if (welcomeName) {
+
+        welcomeName.textContent =
+            name;
+
+    }
+
+    if (avatar) {
+
+        avatar.textContent =
+            name
+                .charAt(0)
+                .toUpperCase();
+
+    }
+
+    if (adminNav) {
+
+        if (role === "admin") {
+
+            adminNav.classList.remove(
+                "hidden"
+            );
+
+        } else {
+
+            adminNav.classList.add(
+                "hidden"
+            );
+
+        }
+
+    }
+
+}
+
+
+// ============================================================
+// LOGOUT
+// ============================================================
+
+function logout() {
+
+    localStorage.removeItem(
+        TOKEN_KEY
+    );
+
+    localStorage.removeItem(
+        USER_KEY
+    );
+
+    currentUser = null;
+
+    const appScreen =
+        document.getElementById(
+            "appScreen"
+        );
+
+    const authScreen =
+        document.getElementById(
+            "authScreen"
+        );
+
+    if (appScreen) {
+
+        appScreen.classList.add("hidden");
+
+    }
+
+    if (authScreen) {
+
+        authScreen.classList.remove("hidden");
+
+    }
+
+    showLogin();
+
 }
 
 
@@ -526,56 +706,128 @@ function clearMessage(element) {
 function showPage(pageName) {
 
     const pages =
-        document.querySelectorAll(".page");
+        document.querySelectorAll(
+            ".page"
+        );
 
     pages.forEach(
         page => {
+
             page.classList.remove(
                 "active-page"
             );
+
         }
     );
 
-    const target =
-        $(`${pageName}Page`);
+    const targetPage =
+        document.getElementById(
+            `${pageName}Page`
+        );
 
-    if (!target) {
+    if (!targetPage) {
+
         return;
+
     }
 
-    target.classList.add(
+    targetPage.classList.add(
         "active-page"
     );
 
-    const navItems =
+    const navButtons =
         document.querySelectorAll(
-            "[data-page]"
+            ".sidebar-nav button[data-page]"
         );
 
-    navItems.forEach(
-        item => {
+    navButtons.forEach(
+        button => {
+
+            button.classList.remove(
+                "active"
+            );
 
             if (
-                item.dataset.page === pageName
+                button.dataset.page ===
+                pageName
             ) {
 
-                item.classList.add("active");
+                button.classList.add(
+                    "active"
+                );
 
-            } else {
-
-                item.classList.remove("active");
             }
+
         }
     );
 
-    updatePageHeader(pageName);
+    const pageTitle =
+        document.getElementById(
+            "pageTitle"
+        );
+
+    const pageSubtitle =
+        document.getElementById(
+            "pageSubtitle"
+        );
+
+    const titles = {
+
+        dashboard: [
+            "Dashboard",
+            "Enterprise intelligence at your fingertips."
+        ],
+
+        chat: [
+            "Chat",
+            "Ask questions across enterprise knowledge."
+        ],
+
+        documents: [
+            "Documents",
+            "Upload and manage enterprise documents."
+        ],
+
+        evaluations: [
+            "Evaluations",
+            "Measure EnterpriseIQ performance."
+        ],
+
+        admin: [
+            "Admin",
+            "Manage EnterpriseIQ users."
+        ]
+
+    };
+
+    if (titles[pageName]) {
+
+        if (pageTitle) {
+
+            pageTitle.textContent =
+                titles[pageName][0];
+
+        }
+
+        if (pageSubtitle) {
+
+            pageSubtitle.textContent =
+                titles[pageName][1];
+
+        }
+
+    }
 
     if (pageName === "documents") {
+
         loadDocuments();
+
     }
 
     if (pageName === "evaluations") {
+
         loadEvaluationDashboard();
+
     }
 
     if (pageName === "admin") {
@@ -584,84 +836,26 @@ function showPage(pageName) {
             currentUser &&
             currentUser.role === "admin"
         ) {
+
             loadUsers();
+
         }
+
     }
+
 }
 
 
 // ============================================================
-// PAGE HEADER
+// BACKEND STATUS
 // ============================================================
 
-function updatePageHeader(pageName) {
-
-    const pageConfig = {
-
-        dashboard: {
-            title: "Dashboard",
-            subtitle:
-                "Enterprise intelligence at your fingertips."
-        },
-
-        chat: {
-            title: "Agentic Chat",
-            subtitle:
-                "Ask questions across enterprise documents and data."
-        },
-
-        documents: {
-            title: "Documents",
-            subtitle:
-                "Upload and manage your enterprise documents."
-        },
-
-        evaluations: {
-            title: "Evaluation",
-            subtitle:
-                "Current EnterpriseIQ evaluation performance."
-        },
-
-        admin: {
-            title: "Admin",
-            subtitle:
-                "Manage EnterpriseIQ users."
-        }
-    };
-
-    const config =
-        pageConfig[pageName];
-
-    if (!config) {
-        return;
-    }
-
-    const title =
-        $("pageTitle");
-
-    const subtitle =
-        $("pageSubtitle");
-
-    if (title) {
-        title.textContent =
-            config.title;
-    }
-
-    if (subtitle) {
-        subtitle.textContent =
-            config.subtitle;
-    }
-}
-
-
-// ============================================================
-// BACKEND HEALTH
-// ============================================================
-
-async function checkBackendHealth() {
+async function checkBackendStatus() {
 
     const status =
-        $("backendStatus");
+        document.getElementById(
+            "backendStatus"
+        );
 
     try {
 
@@ -671,789 +865,122 @@ async function checkBackendHealth() {
             );
 
         if (!response.ok) {
+
             throw new Error(
                 "Backend unavailable"
             );
-        }
 
-        await response.json();
+        }
 
         if (status) {
 
-            status.classList.remove("error");
-            status.classList.add("connected");
+            status.innerHTML =
+                '<span class="status-dot"></span> Backend connected';
 
-            status.innerHTML = `
-                <span class="status-dot"></span>
-                Backend Online
-            `;
         }
 
     } catch (error) {
 
-        console.error(
-            "Backend health error:",
-            error
-        );
-
         if (status) {
 
-            status.classList.remove("connected");
-            status.classList.add("error");
+            status.innerHTML =
+                '<span class="status-dot"></span> Backend unavailable';
 
-            status.innerHTML = `
-                <span class="status-dot"></span>
-                Backend Offline
-            `;
         }
+
     }
+
 }
 
 
 // ============================================================
-// CHAT EXAMPLES
+// CHAT - EXAMPLE
 // ============================================================
 
 function useExample(question) {
 
     const input =
-        $("chatInput");
-
-    if (!input) {
-        return;
-    }
-
-    input.value =
-        question;
-
-    input.focus();
-}
-
-
-// ============================================================
-// CLEAR CHAT
-// ============================================================
-
-function clearChat() {
-
-    const messages =
-        $("chatMessages");
-
-    if (!messages) {
-        return;
-    }
-
-    messages.innerHTML = `
-        <div
-            id="chatEmpty"
-            class="chat-empty"
-        >
-
-            <div class="chat-empty-icon">
-                ✦
-            </div>
-
-            <h2>
-                Ask EnterpriseIQ
-            </h2>
-
-            <p>
-                Ask questions about your
-                enterprise documents and data.
-            </p>
-
-            <div class="example-questions">
-
-                <button
-                    onclick="useExample('What is the payment due date for Rahul Enterprises?')"
-                >
-                    What is the payment due date
-                    for Rahul Enterprises?
-                </button>
-
-                <button
-                    onclick="useExample('What is the total sales for Q2 2026?')"
-                >
-                    What is the total sales
-                    for Q2 2026?
-                </button>
-
-                <button
-                    onclick="useExample('What is the maximum standard discount allowed?')"
-                >
-                    What is the maximum
-                    standard discount allowed?
-                </button>
-
-            </div>
-
-        </div>
-    `;
-}
-
-
-// ============================================================
-// ADD USER MESSAGE
-// ============================================================
-
-function addUserMessage(text) {
-
-    const messages =
-        $("chatMessages");
-
-    if (!messages) {
-        return;
-    }
-
-    const empty =
-        $("chatEmpty");
-
-    if (empty) {
-        empty.remove();
-    }
-
-    const wrapper =
-        document.createElement("div");
-
-    wrapper.className =
-        "chat-message user-message";
-
-    const label =
-        document.createElement("div");
-
-    label.className =
-        "chat-message-label";
-
-    label.textContent =
-        "You";
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "chat-bubble user";
-
-    bubble.textContent =
-        text;
-
-    wrapper.appendChild(label);
-    wrapper.appendChild(bubble);
-
-    messages.appendChild(wrapper);
-
-    messages.scrollTop =
-        messages.scrollHeight;
-}
-
-
-// ============================================================
-// ADD ERROR MESSAGE
-// ============================================================
-
-function addErrorMessage(text) {
-
-    const messages =
-        $("chatMessages");
-
-    if (!messages) {
-        return;
-    }
-
-    const wrapper =
-        document.createElement("div");
-
-    wrapper.className =
-        "chat-message assistant-message";
-
-    const label =
-        document.createElement("div");
-
-    label.className =
-        "chat-message-label";
-
-    label.textContent =
-        "EnterpriseIQ";
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "chat-bubble error";
-
-    bubble.textContent =
-        text;
-
-    wrapper.appendChild(label);
-    wrapper.appendChild(bubble);
-
-    messages.appendChild(wrapper);
-
-    messages.scrollTop =
-        messages.scrollHeight;
-}
-
-
-// ============================================================
-// LOADING MESSAGE
-// ============================================================
-
-function addLoadingMessage() {
-
-    const messages =
-        $("chatMessages");
-
-    if (!messages) {
-        return null;
-    }
-
-    const wrapper =
-        document.createElement("div");
-
-    wrapper.className =
-        "chat-message assistant-message";
-
-    wrapper.id =
-        "agentLoadingWrapper";
-
-    const label =
-        document.createElement("div");
-
-    label.className =
-        "chat-message-label";
-
-    label.textContent =
-        "EnterpriseIQ";
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "chat-bubble assistant";
-
-    bubble.id =
-        "agentLoading";
-
-    bubble.innerHTML = `
-        <span>EnterpriseIQ is thinking</span>
-        <span class="thinking-dots">...</span>
-    `;
-
-    wrapper.appendChild(label);
-    wrapper.appendChild(bubble);
-
-    messages.appendChild(wrapper);
-
-    messages.scrollTop =
-        messages.scrollHeight;
-
-    return wrapper;
-}
-
-
-function removeLoadingMessage() {
-
-    const loading =
-        $("agentLoadingWrapper");
-
-    if (loading) {
-        loading.remove();
-    }
-}
-
-
-// ============================================================
-// CLEAN SOURCE LIST
-// ============================================================
-
-function getUniqueSources(sources) {
-
-    if (!Array.isArray(sources)) {
-        return [];
-    }
-
-    const seen =
-        new Set();
-
-    const unique =
-        [];
-
-    sources.forEach(
-        source => {
-
-            if (!source) {
-                return;
-            }
-
-            const filename =
-                source.filename ||
-                "Unknown document";
-
-            const page =
-                source.page_number !== null &&
-                source.page_number !== undefined
-                    ? source.page_number
-                    : null;
-
-            const key =
-                `${filename}|${page}`;
-
-            if (!seen.has(key)) {
-
-                seen.add(key);
-
-                unique.push({
-                    filename,
-                    page_number: page
-                });
-            }
-        }
-    );
-
-    return unique;
-}
-
-
-// ============================================================
-// FORMAT TOOL NAME
-// ============================================================
-
-function formatToolName(tool) {
-
-    if (!tool) {
-        return "";
-    }
-
-    return tool
-        .replace(/_/g, " ")
-        .replace(
-            /\b\w/g,
-            character =>
-                character.toUpperCase()
-        );
-}
-
-
-// ============================================================
-// FORMAT TOOLS
-// ============================================================
-
-function formatTools(tools) {
-
-    if (!Array.isArray(tools)) {
-        return "";
-    }
-
-    const validTools =
-        tools.filter(Boolean);
-
-    return validTools
-        .map(formatToolName)
-        .join(" → ");
-}
-
-
-// ============================================================
-// ESCAPE HTML
-// ============================================================
-
-function escapeHtml(text) {
-
-    const div =
-        document.createElement("div");
-
-    div.textContent =
-        text;
-
-    return div.innerHTML;
-}
-
-
-// ============================================================
-// FORMAT ANSWER
-// ============================================================
-
-function formatAnswer(text) {
-
-    if (!text) {
-        return "";
-    }
-
-    let safeText =
-        escapeHtml(text);
-
-    // Markdown bold
-    safeText =
-        safeText.replace(
-            /\*\*(.*?)\*\*/g,
-            "<strong>$1</strong>"
+        document.getElementById(
+            "chatInput"
         );
 
-    // Normalize Unicode citations
-    safeText =
-        safeText.replace(
-            /【([^】]+)】/g,
-            "[$1]"
-        );
+    if (input) {
 
-    // Line breaks
-    safeText =
-        safeText.replace(
-            /\n/g,
-            "<br>"
-        );
+        input.value =
+            question;
 
-    return safeText;
+        input.focus();
+
+    }
+
 }
 
 
 // ============================================================
-// EXTRACT CITATIONS
-// ============================================================
-
-function getCitedSourceKeys(answer) {
-
-    const citedKeys =
-        new Set();
-
-    if (!answer) {
-        return citedKeys;
-    }
-
-    const normalizedAnswer =
-        answer.replace(
-            /【([^】]+)】/g,
-            "[$1]"
-        );
-
-    const citationPattern =
-        /\[([^\],]+?)(?:,\s*Page\s*(\d+))?\]/gi;
-
-    let match;
-
-    while (
-        (match =
-            citationPattern.exec(
-                normalizedAnswer
-            )) !== null
-    ) {
-
-        const filename =
-            match[1].trim();
-
-        const page =
-            match[2]
-                ? Number(match[2])
-                : null;
-
-        citedKeys.add(
-            `${filename}|${page}`
-        );
-    }
-
-    return citedKeys;
-}
-
-
-// ============================================================
-// FILTER SOURCES USED IN ANSWER
-// ============================================================
-
-function filterUsedSources(
-    answer,
-    sources
-) {
-
-    const uniqueSources =
-        getUniqueSources(sources);
-
-    if (uniqueSources.length === 0) {
-        return [];
-    }
-
-    const citedKeys =
-        getCitedSourceKeys(answer);
-
-    if (citedKeys.size > 0) {
-
-        const used =
-            uniqueSources.filter(
-                source => {
-
-                    const key =
-                        `${source.filename}|${source.page_number}`;
-
-                    return citedKeys.has(key);
-                }
-            );
-
-        if (used.length > 0) {
-            return used;
-        }
-    }
-
-    // Fallback:
-    // never show all retrieved sources.
-    return [
-        uniqueSources[0]
-    ];
-}
-
-
-// ============================================================
-// CREATE CHAT SECTION
-// ============================================================
-
-function createChatSection(title) {
-
-    const section =
-        document.createElement("div");
-
-    section.className =
-        "chat-sources";
-
-    const heading =
-        document.createElement("strong");
-
-    heading.textContent =
-        title;
-
-    section.appendChild(
-        heading
-    );
-
-    return section;
-}
-
-
-// ============================================================
-// RENDER AGENT ANSWER
-// ============================================================
-
-function renderAgentAnswer(data) {
-
-    const messages =
-        $("chatMessages");
-
-    if (!messages) {
-        return;
-    }
-
-    const wrapper =
-        document.createElement("div");
-
-    wrapper.className =
-        "chat-message assistant-message";
-
-    // --------------------------------------------------------
-    // LABEL
-    // --------------------------------------------------------
-
-    const label =
-        document.createElement("div");
-
-    label.className =
-        "chat-message-label";
-
-    label.textContent =
-        "EnterpriseIQ";
-
-    wrapper.appendChild(label);
-
-    // --------------------------------------------------------
-    // MAIN ASSISTANT BUBBLE
-    // --------------------------------------------------------
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "chat-bubble assistant";
-
-    // --------------------------------------------------------
-    // FINAL ANSWER
-    // --------------------------------------------------------
-
-    const answer =
-        document.createElement("div");
-
-    answer.className =
-        "assistant-answer";
-
-    answer.innerHTML =
-        formatAnswer(
-            data.answer ||
-            "I could not generate an answer."
-        );
-
-    bubble.appendChild(
-        answer
-    );
-
-    // --------------------------------------------------------
-    // TOOLS USED
-    // --------------------------------------------------------
-
-    const tools =
-        Array.isArray(data.tools)
-            ? data.tools
-            : [];
-
-    if (tools.length > 0) {
-
-        const section =
-            createChatSection(
-                "Tools Used"
-            );
-
-        const toolsRow =
-            document.createElement("div");
-
-        toolsRow.className =
-            "tools-used";
-
-        toolsRow.textContent =
-            formatTools(tools);
-
-        section.appendChild(
-            toolsRow
-        );
-
-        bubble.appendChild(
-            section
-        );
-    }
-
-    // --------------------------------------------------------
-    // SOURCES
-    // --------------------------------------------------------
-
-    const sources =
-        filterUsedSources(
-            data.answer || "",
-            data.sources
-        );
-
-    if (sources.length > 0) {
-
-        const section =
-            createChatSection(
-                "Sources"
-            );
-
-        sources.forEach(
-            source => {
-
-                const item =
-                    document.createElement("div");
-
-                item.className =
-                    "source-item";
-
-                const icon =
-                    document.createElement("span");
-
-                icon.className =
-                    "source-icon";
-
-                icon.textContent =
-                    "📄";
-
-                const sourceText =
-                    document.createElement("span");
-
-                sourceText.className =
-                    "source-text";
-
-                const filename =
-                    document.createElement("span");
-
-                filename.className =
-                    "source-filename";
-
-                filename.textContent =
-                    source.filename;
-
-                sourceText.appendChild(
-                    filename
-                );
-
-                if (
-                    source.page_number !== null
-                ) {
-
-                    const page =
-                        document.createElement("span");
-
-                    page.className =
-                        "source-page";
-
-                    page.textContent =
-                        `Page ${source.page_number}`;
-
-                    sourceText.appendChild(
-                        page
-                    );
-                }
-
-                item.appendChild(icon);
-                item.appendChild(sourceText);
-
-                section.appendChild(item);
-            }
-        );
-
-        bubble.appendChild(section);
-    }
-
-    // --------------------------------------------------------
-    // APPEND MESSAGE
-    // --------------------------------------------------------
-
-    wrapper.appendChild(bubble);
-
-    messages.appendChild(wrapper);
-
-    messages.scrollTop =
-        messages.scrollHeight;
-}
-
-
-// ============================================================
-// SEND CHAT
+// CHAT - SEND
 // ============================================================
 
 async function sendChat() {
 
     const input =
-        $("chatInput");
+        document.getElementById(
+            "chatInput"
+        );
 
-    const sendButton =
-        $("sendButton");
+    const button =
+        document.getElementById(
+            "sendButton"
+        );
 
-    if (!input) {
+    const messages =
+        document.getElementById(
+            "chatMessages"
+        );
+
+    if (!input || !messages) {
+
         return;
+
     }
 
     const question =
         input.value.trim();
 
     if (!question) {
+
         return;
+
     }
 
-    addUserMessage(question);
+    const empty =
+        document.getElementById(
+            "chatEmpty"
+        );
+
+    if (empty) {
+
+        empty.remove();
+
+    }
+
+    appendUserMessage(
+        messages,
+        question
+    );
 
     input.value = "";
 
-    if (sendButton) {
+    if (button) {
 
-        sendButton.disabled = true;
+        button.disabled = true;
+        button.textContent = "Thinking...";
 
-        sendButton.textContent =
-            "Thinking...";
     }
 
-    addLoadingMessage();
+    const loading =
+        appendLoadingMessage(
+            messages
+        );
 
     try {
 
@@ -1462,260 +989,344 @@ async function sendChat() {
                 "/api/agent",
                 {
                     method: "POST",
-
                     body: JSON.stringify({
-                        question,
-                        top_k: 5
+                        question
                     })
                 }
             );
 
-        removeLoadingMessage();
+        if (loading) {
 
-        if (
-            data.error &&
-            !data.answer
-        ) {
+            loading.remove();
 
-            addErrorMessage(
-                data.error
-            );
-
-            return;
         }
 
-        renderAgentAnswer(data);
+        renderAgentResponse(
+            messages,
+            data
+        );
 
     } catch (error) {
 
-        console.error(
-            "Agent request failed:",
-            error
-        );
+        if (loading) {
 
-        removeLoadingMessage();
+            loading.remove();
 
-        addErrorMessage(
-            `Unable to process your request: ${error.message}`
+        }
+
+        appendErrorMessage(
+            messages,
+            error.message
         );
 
     } finally {
 
-        if (sendButton) {
+        if (button) {
 
-            sendButton.disabled =
-                false;
+            button.disabled = false;
+            button.textContent = "Send";
 
-            sendButton.textContent =
-                "Send";
         }
 
-        input.focus();
     }
+
 }
 
 
 // ============================================================
-// DOCUMENTS
+// CHAT - USER MESSAGE
 // ============================================================
 
-async function loadDocuments() {
+function appendUserMessage(
+    container,
+    text
+) {
 
-    const table =
-        $("documentsTable");
-
-    try {
-
-        const data =
-            await apiRequest(
-                "/api/documents"
-            );
-
-        let documents = [];
-
-        if (Array.isArray(data)) {
-
-            documents =
-                data;
-
-        } else if (
-            data &&
-            Array.isArray(data.documents)
-        ) {
-
-            documents =
-                data.documents;
-        }
-
-        renderDocuments(documents);
-
-    } catch (error) {
-
-        console.error(
-            "Document loading failed:",
-            error
+    const wrapper =
+        document.createElement(
+            "div"
         );
 
-        if (table) {
+    wrapper.className =
+        "chat-message user-message";
 
-            table.innerHTML = `
-                <div class="loading">
-                    Unable to load documents.
-                </div>
-            `;
-        }
-    }
+    wrapper.innerHTML =
+        `<div class="message-content">${escapeHtml(text)}</div>`;
+
+    container.appendChild(
+        wrapper
+    );
+
+    container.scrollTop =
+        container.scrollHeight;
+
 }
 
 
 // ============================================================
-// RENDER DOCUMENTS
+// CHAT - LOADING
 // ============================================================
 
-function renderDocuments(documents) {
+function appendLoadingMessage(
+    container
+) {
 
-    const table =
-        $("documentsTable");
+    const wrapper =
+        document.createElement(
+            "div"
+        );
 
-    const count =
-        $("documentCount");
+    wrapper.className =
+        "chat-message assistant-message";
 
-    if (count) {
-        count.textContent =
-            documents.length;
-    }
+    wrapper.innerHTML =
+        `<div class="message-content">Thinking...</div>`;
 
-    if (!table) {
-        return;
-    }
+    container.appendChild(
+        wrapper
+    );
 
-    if (documents.length === 0) {
+    container.scrollTop =
+        container.scrollHeight;
 
-        table.innerHTML = `
-            <div class="loading">
-                No documents available.
+    return wrapper;
+
+}
+
+
+// ============================================================
+// CHAT - ERROR
+// ============================================================
+
+function appendErrorMessage(
+    container,
+    message
+) {
+
+    const wrapper =
+        document.createElement(
+            "div"
+        );
+
+    wrapper.className =
+        "chat-message assistant-message";
+
+    wrapper.innerHTML =
+        `<div class="message-content">Error: ${escapeHtml(message)}</div>`;
+
+    container.appendChild(
+        wrapper
+    );
+
+    container.scrollTop =
+        container.scrollHeight;
+
+}
+
+
+// ============================================================
+// CHAT - AGENT RESPONSE
+// ============================================================
+
+function renderAgentResponse(
+    container,
+    data
+) {
+
+    const wrapper =
+        document.createElement(
+            "div"
+        );
+
+    wrapper.className =
+        "chat-message assistant-message";
+
+    const answer =
+        data.answer ||
+        data.final_answer ||
+        data.message ||
+        "No answer returned.";
+
+    const tools =
+        data.tools ||
+        data.tool_names ||
+        data.selected_tools ||
+        [];
+
+    const sources =
+        data.sources ||
+        [];
+
+    let html =
+        `<div class="message-content">`;
+
+    html +=
+        `<div>${formatAnswer(answer)}</div>`;
+
+    if (
+        Array.isArray(tools) &&
+        tools.length
+    ) {
+
+        html += `
+            <div style="
+                margin-top:12px;
+                font-size:11px;
+                color:#667085;
+            ">
+                <strong>Tools used:</strong>
+                ${tools
+                    .map(tool =>
+                        `<span style="
+                            display:inline-block;
+                            margin-left:5px;
+                            padding:3px 7px;
+                            border-radius:5px;
+                            background:#f2f4f7;
+                        ">${escapeHtml(tool)}</span>`
+                    )
+                    .join("")
+                }
             </div>
         `;
 
-        return;
     }
 
-    let html = `
-        <table class="data-table">
+    if (
+        Array.isArray(sources) &&
+        sources.length
+    ) {
 
-            <thead>
+        html += `
+            <div style="
+                margin-top:12px;
+                font-size:11px;
+                color:#667085;
+            ">
+                <strong>Sources:</strong>
+        `;
 
-                <tr>
+        const uniqueSources =
+            [];
 
-                    <th>File</th>
+        sources.forEach(
+            source => {
 
-                    <th>Type</th>
+                const filename =
+                    source.filename ||
+                    source.document ||
+                    "Unknown document";
 
-                    <th>Status</th>
+                const page =
+                    source.page_number;
 
-                    <th>Access</th>
+                const label =
+                    page
+                        ? `${filename}, Page ${page}`
+                        : filename;
 
-                    <th>Uploaded By</th>
+                if (
+                    !uniqueSources.includes(
+                        label
+                    )
+                ) {
 
-                </tr>
+                    uniqueSources.push(
+                        label
+                    );
 
-            </thead>
+                }
 
-            <tbody>
-    `;
+            }
+        );
 
-    documents.forEach(
-        document => {
+        html +=
+            uniqueSources
+                .map(
+                    source =>
+                        `<div style="margin-top:4px;">• ${escapeHtml(source)}</div>`
+                )
+                .join("");
 
-            html += `
-                <tr>
+        html += "</div>";
 
-                    <td>
-                        ${escapeHtml(
-                            document.original_filename ||
-                            document.filename ||
-                            "-"
-                        )}
-                    </td>
+    }
 
-                    <td>
-                        ${escapeHtml(
-                            document.file_type ||
-                            "-"
-                        )}
-                    </td>
+    html += "</div>";
 
-                    <td>
+    wrapper.innerHTML =
+        html;
 
-                        <span class="status-badge">
-                            ${escapeHtml(
-                                document.status ||
-                                "-"
-                            )}
-                        </span>
-
-                    </td>
-
-                    <td>
-                        ${escapeHtml(
-                            document.access_scope ||
-                            "-"
-                        )}
-                    </td>
-
-                    <td>
-                        ${escapeHtml(
-                            String(
-                                document.uploaded_by ??
-                                "-"
-                            )
-                        )}
-                    </td>
-
-                </tr>
-            `;
-        }
+    container.appendChild(
+        wrapper
     );
 
-    html += `
-            </tbody>
+    container.scrollTop =
+        container.scrollHeight;
 
-        </table>
-    `;
-
-    table.innerHTML =
-        html;
 }
 
 
 // ============================================================
-// UPLOAD DOCUMENT
+// FORMAT ANSWER
+// ============================================================
+
+function formatAnswer(
+    answer
+) {
+
+    if (!answer) {
+
+        return "";
+
+    }
+
+    return escapeHtml(
+        String(answer)
+    )
+        .replace(
+            /\n/g,
+            "<br>"
+        );
+
+}
+
+
+// ============================================================
+// DOCUMENT UPLOAD
 // ============================================================
 
 async function uploadDocument() {
 
     const fileInput =
-        $("documentFile");
+        document.getElementById(
+            "documentFile"
+        );
+
+    const button =
+        document.getElementById(
+            "uploadButton"
+        );
 
     const message =
-        $("uploadMessage");
+        document.getElementById(
+            "uploadMessage"
+        );
 
     if (
         !fileInput ||
-        !fileInput.files ||
-        fileInput.files.length === 0
+        !fileInput.files.length
     ) {
 
         if (message) {
 
             message.textContent =
-                "Please select a file.";
+                "Please select a document.";
 
-            message.style.color =
-                "#c0392b";
         }
 
         return;
+
     }
 
     const file =
@@ -1731,31 +1342,41 @@ async function uploadDocument() {
 
     try {
 
+        if (button) {
+
+            button.disabled = true;
+            button.textContent =
+                "Uploading...";
+
+        }
+
         if (message) {
 
             message.textContent =
                 "Uploading document...";
 
-            message.style.color =
-                "#667085";
         }
 
-        await apiRequest(
-            "/api/documents/upload",
-            {
-                method: "POST",
-                body: formData
-            }
-        );
+        const data =
+            await apiRequest(
+                "/api/documents/upload",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
 
         if (message) {
 
             message.textContent =
                 "Document uploaded successfully.";
 
-            message.style.color =
-                "#18794e";
         }
+
+        console.log(
+            "Document uploaded:",
+            data
+        );
 
         fileInput.value = "";
 
@@ -1764,7 +1385,7 @@ async function uploadDocument() {
     } catch (error) {
 
         console.error(
-            "Document upload failed:",
+            "Upload error:",
             error
         );
 
@@ -1773,47 +1394,888 @@ async function uploadDocument() {
             message.textContent =
                 error.message;
 
-            message.style.color =
-                "#c0392b";
         }
+
+    } finally {
+
+        if (button) {
+
+            button.disabled = false;
+            button.textContent =
+                "Upload Document";
+
+        }
+
     }
+
 }
 
 
 // ============================================================
-// EVALUATION
+// LOAD DOCUMENTS
 // ============================================================
 
-function loadEvaluationDashboard() {
+async function loadDocuments() {
 
-    // Evaluation values are from the
-    // completed backend evaluation run.
+    const container =
+        document.getElementById(
+            "documentsTable"
+        );
 
-    return;
+    if (!container) {
+
+        return;
+
+    }
+
+    try {
+
+        container.innerHTML =
+            '<div class="loading">Loading documents...</div>';
+
+        const data =
+            await apiRequest(
+                "/api/documents"
+            );
+
+        /*
+         * Backend response:
+         *
+         * {
+         *     "total": 2,
+         *     "documents": [...]
+         * }
+         */
+
+        const documents =
+            Array.isArray(data)
+                ? data
+                : (
+                    Array.isArray(
+                        data.documents
+                    )
+                        ? data.documents
+                        : []
+                );
+
+        const total =
+            typeof data.total === "number"
+                ? data.total
+                : documents.length;
+
+        renderDocuments(
+            documents
+        );
+
+        updateDocumentCounts(
+            total
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Document loading error:",
+            error
+        );
+
+        container.innerHTML = `
+            <div class="loading">
+                ${escapeHtml(error.message)}
+            </div>
+        `;
+
+        updateDocumentCounts(0);
+
+    }
+
 }
 
 
 // ============================================================
-// ADMIN USERS
+// DOCUMENT COUNTS
+// ============================================================
+
+function updateDocumentCounts(
+    count
+) {
+
+    /*
+     * New preferred dashboard ID.
+     */
+
+    const dashboardCount =
+        document.getElementById(
+            "dashboardDocumentCount"
+        );
+
+    /*
+     * Existing/alternate dashboard ID.
+     */
+
+    const oldDashboardCount =
+        document.getElementById(
+            "documentCount"
+        );
+
+    /*
+     * Documents page count.
+     */
+
+    const listCount =
+        document.getElementById(
+            "documentListCount"
+        );
+
+    if (dashboardCount) {
+
+        dashboardCount.textContent =
+            count;
+
+    }
+
+    /*
+     * Backward compatibility with
+     * the current index.html.
+     */
+
+    if (
+        oldDashboardCount &&
+        oldDashboardCount !== dashboardCount
+    ) {
+
+        oldDashboardCount.textContent =
+            count;
+
+    }
+
+    if (listCount) {
+
+        listCount.textContent =
+            count;
+
+    }
+
+}
+
+
+// ============================================================
+// FORMAT FILE SIZE
+// ============================================================
+
+function formatFileSize(
+    bytes
+) {
+
+    if (
+        bytes === null ||
+        bytes === undefined ||
+        Number.isNaN(Number(bytes))
+    ) {
+
+        return "-";
+
+    }
+
+    const size =
+        Number(bytes);
+
+    if (size < 1024) {
+
+        return `${size} B`;
+
+    }
+
+    if (size < 1024 * 1024) {
+
+        return `${(
+            size / 1024
+        ).toFixed(1)} KB`;
+
+    }
+
+    return `${(
+        size / (
+            1024 * 1024
+        )
+    ).toFixed(1)} MB`;
+
+}
+
+
+// ============================================================
+// FORMAT DOCUMENT STATUS
+// ============================================================
+
+function formatDocumentStatus(
+    status
+) {
+
+    if (!status) {
+
+        return "-";
+
+    }
+
+    const value =
+        String(status);
+
+    return value
+        .charAt(0)
+        .toUpperCase() +
+        value.slice(1);
+
+}
+
+
+// ============================================================
+// RENDER DOCUMENTS
+// ============================================================
+
+function renderDocuments(
+    documents
+) {
+
+    const container =
+        document.getElementById(
+            "documentsTable"
+        );
+
+    if (!container) {
+
+        return;
+
+    }
+
+    if (!documents.length) {
+
+        container.innerHTML = `
+            <div class="loading">
+                No documents found.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    let html = `
+        <div style="overflow-x:auto;">
+            <table style="
+                width:100%;
+                border-collapse:collapse;
+                font-size:12px;
+            ">
+
+                <thead>
+
+                    <tr>
+
+                        <th style="text-align:left;padding:10px;">
+                            Document
+                        </th>
+
+                        <th style="text-align:left;padding:10px;">
+                            Type
+                        </th>
+
+                        <th style="text-align:left;padding:10px;">
+                            Size
+                        </th>
+
+                        <th style="text-align:left;padding:10px;">
+                            Status
+                        </th>
+
+                        <th style="text-align:left;padding:10px;">
+                            Access
+                        </th>
+
+                        <th style="text-align:left;padding:10px;">
+                            Chunks
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+    `;
+
+    documents.forEach(
+        document => {
+
+            const filename =
+                document.original_filename ||
+                document.filename ||
+                document.file_name ||
+                document.name ||
+                "Unknown";
+
+            const fileType =
+                document.file_type ||
+                document.content_type ||
+                "-";
+
+            const fileSize =
+                formatFileSize(
+                    document.file_size
+                );
+
+            const documentStatus =
+                formatDocumentStatus(
+                    document.status
+                );
+
+            const accessScope =
+                document.access_scope ||
+                document.scope ||
+                "private";
+
+            const chunkCount =
+                document.chunk_count ??
+                document.total_chunks ??
+                0;
+
+            html += `
+                <tr style="
+                    border-top:1px solid #eaecf0;
+                ">
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(filename)}
+                    </td>
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(fileType)}
+                    </td>
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(fileSize)}
+                    </td>
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(documentStatus)}
+                    </td>
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(accessScope)}
+                    </td>
+
+                    <td style="padding:10px;">
+                        ${escapeHtml(chunkCount)}
+                    </td>
+
+                </tr>
+            `;
+
+        }
+    );
+
+    html += `
+                </tbody>
+
+            </table>
+        </div>
+    `;
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// EVALUATION MESSAGE
+// ============================================================
+
+function setEvaluationMessage(
+    message
+) {
+
+    const element =
+        document.getElementById(
+            "evaluationMessage"
+        );
+
+    if (element) {
+
+        element.textContent =
+            message;
+
+    }
+
+}
+
+
+// ============================================================
+// EVALUATION FORMAT
+// ============================================================
+
+function formatEvaluationValue(
+    value
+) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return "--";
+
+    }
+
+    const number =
+        Number(value);
+
+    if (
+        Number.isNaN(number)
+    ) {
+
+        return String(value);
+
+    }
+
+    return number.toFixed(4);
+
+}
+
+
+// ============================================================
+// RENDER AGENT EVALUATION
+// ============================================================
+
+function renderAgentEvaluation(
+    data
+) {
+
+    const route =
+        document.getElementById(
+            "routeAccuracy"
+        );
+
+    const selection =
+        document.getElementById(
+            "toolSelectionAccuracy"
+        );
+
+    const execution =
+        document.getElementById(
+            "toolExecutionAccuracy"
+        );
+
+    const finalAnswer =
+        document.getElementById(
+            "finalAnswerAccuracy"
+        );
+
+    if (route) {
+
+        route.textContent =
+            formatEvaluationValue(
+                data.route_accuracy
+            );
+
+    }
+
+    if (selection) {
+
+        selection.textContent =
+            formatEvaluationValue(
+                data.tool_selection_accuracy
+            );
+
+    }
+
+    if (execution) {
+
+        execution.textContent =
+            formatEvaluationValue(
+                data.tool_execution_accuracy
+            );
+
+    }
+
+    if (finalAnswer) {
+
+        finalAnswer.textContent =
+            formatEvaluationValue(
+                data.final_answer_accuracy
+            );
+
+    }
+
+}
+
+
+// ============================================================
+// RUN AGENT EVALUATION
+// ============================================================
+
+async function runAgentEvaluation() {
+
+    const button =
+        document.getElementById(
+            "runAgentButton"
+        );
+
+    try {
+
+        setEvaluationMessage(
+            "Running agent evaluation..."
+        );
+
+        if (button) {
+
+            button.disabled = true;
+            button.textContent =
+                "Running...";
+
+        }
+
+        const data =
+            await apiRequest(
+                "/api/evaluation/agent",
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        top_k: 3
+                    })
+                }
+            );
+
+        renderAgentEvaluation(
+            data
+        );
+
+        setEvaluationMessage(
+            `Agent evaluation completed successfully. ${data.total_questions || 0} questions evaluated.`
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Agent evaluation error:",
+            error
+        );
+
+        setEvaluationMessage(
+            error.message
+        );
+
+    } finally {
+
+        if (button) {
+
+            button.disabled = false;
+            button.textContent =
+                "Run Agent Evaluation";
+
+        }
+
+    }
+
+}
+
+
+// ============================================================
+// RENDER RETRIEVAL EVALUATION
+// ============================================================
+
+function renderRetrievalEvaluation(
+    data
+) {
+
+    const precision =
+        document.getElementById(
+            "precisionAt3"
+        );
+
+    const recall =
+        document.getElementById(
+            "recallAt3"
+        );
+
+    const hitRate =
+        document.getElementById(
+            "hitRateAt3"
+        );
+
+    const mrr =
+        document.getElementById(
+            "mrr"
+        );
+
+    if (precision) {
+
+        precision.textContent =
+            formatEvaluationValue(
+                data.precision_at_3 ??
+                data.precision
+            );
+
+    }
+
+    if (recall) {
+
+        recall.textContent =
+            formatEvaluationValue(
+                data.recall_at_3 ??
+                data.recall
+            );
+
+    }
+
+    if (hitRate) {
+
+        hitRate.textContent =
+            formatEvaluationValue(
+                data.hit_rate_at_3 ??
+                data.hit_rate
+            );
+
+    }
+
+    if (mrr) {
+
+        mrr.textContent =
+            formatEvaluationValue(
+                data.mrr
+            );
+
+    }
+
+}
+
+
+// ============================================================
+// RUN RETRIEVAL EVALUATION
+// ============================================================
+
+async function runRetrievalEvaluation() {
+
+    const button =
+        document.getElementById(
+            "runRetrievalButton"
+        );
+
+    try {
+
+        setEvaluationMessage(
+            "Running retrieval evaluation..."
+        );
+
+        if (button) {
+
+            button.disabled = true;
+            button.textContent =
+                "Running...";
+
+        }
+
+        const data =
+            await apiRequest(
+                "/api/evaluation/retrieval",
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        top_k: 3
+                    })
+                }
+            );
+
+        renderRetrievalEvaluation(
+            data
+        );
+
+        setEvaluationMessage(
+            "Retrieval evaluation completed successfully."
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Retrieval evaluation error:",
+            error
+        );
+
+        setEvaluationMessage(
+            error.message
+        );
+
+    } finally {
+
+        if (button) {
+
+            button.disabled = false;
+            button.textContent =
+                "Run Retrieval Evaluation";
+
+        }
+
+    }
+
+}
+
+
+// ============================================================
+// RENDER GENERATION EVALUATION
+// ============================================================
+
+function renderGenerationEvaluation(
+    data
+) {
+
+    const faithfulness =
+        document.getElementById(
+            "faithfulness"
+        );
+
+    const relevance =
+        document.getElementById(
+            "answerRelevance"
+        );
+
+    const correctness =
+        document.getElementById(
+            "answerCorrectness"
+        );
+
+    if (faithfulness) {
+
+        faithfulness.textContent =
+            formatEvaluationValue(
+                data.faithfulness
+            );
+
+    }
+
+    if (relevance) {
+
+        relevance.textContent =
+            formatEvaluationValue(
+                data.answer_relevance ??
+                data.answerRelevance
+            );
+
+    }
+
+    if (correctness) {
+
+        correctness.textContent =
+            formatEvaluationValue(
+                data.answer_correctness ??
+                data.answerCorrectness
+            );
+
+    }
+
+}
+
+
+// ============================================================
+// RUN GENERATION EVALUATION
+// ============================================================
+
+async function runGenerationEvaluation() {
+
+    const button =
+        document.getElementById(
+            "runGenerationButton"
+        );
+
+    try {
+
+        setEvaluationMessage(
+            "Running generation evaluation..."
+        );
+
+        if (button) {
+
+            button.disabled = true;
+            button.textContent =
+                "Running...";
+
+        }
+
+        const data =
+            await apiRequest(
+                "/api/evaluation/generation",
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        top_k: 3
+                    })
+                }
+            );
+
+        renderGenerationEvaluation(
+            data
+        );
+
+        setEvaluationMessage(
+            "Generation evaluation completed successfully."
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Generation evaluation error:",
+            error
+        );
+
+        setEvaluationMessage(
+            error.message
+        );
+
+    } finally {
+
+        if (button) {
+
+            button.disabled = false;
+            button.textContent =
+                "Run Generation Evaluation";
+
+        }
+
+    }
+
+}
+
+
+// ============================================================
+// EVALUATION DASHBOARD
+// ============================================================
+
+async function loadEvaluationDashboard() {
+
+    setEvaluationMessage(
+        "Evaluation dashboard ready. Run an evaluation to refresh metrics."
+    );
+
+}
+
+
+// ============================================================
+// ADMIN - LOAD USERS
 // ============================================================
 
 async function loadUsers() {
 
-    if (
-        !currentUser ||
-        currentUser.role !== "admin"
-    ) {
-        return;
-    }
+    const container =
+        document.getElementById(
+            "usersTable"
+        );
 
-    const table =
-        $("usersTable");
+    if (!container) {
 
-    if (!table) {
         return;
+
     }
 
     try {
+
+        container.innerHTML =
+            '<div class="loading">Loading users...</div>';
 
         const data =
             await apiRequest(
@@ -1823,160 +2285,234 @@ async function loadUsers() {
         const users =
             Array.isArray(data)
                 ? data
-                : [];
+                : (
+                    data.users ||
+                    data.items ||
+                    []
+                );
 
-        renderUsers(users);
+        renderUsers(
+            users
+        );
 
     } catch (error) {
 
         console.error(
-            "User loading failed:",
+            "Users loading error:",
             error
         );
 
-        table.innerHTML = `
-            <div class="loading">
-                Unable to load users.
-            </div>
-        `;
+        container.innerHTML =
+            `<div class="loading">${escapeHtml(error.message)}</div>`;
+
     }
+
 }
 
 
 // ============================================================
-// RENDER USERS
+// ADMIN - RENDER USERS
 // ============================================================
 
-function renderUsers(users) {
+function renderUsers(
+    users
+) {
 
-    const table =
-        $("usersTable");
+    const container =
+        document.getElementById(
+            "usersTable"
+        );
 
-    if (!table) {
+    if (!container) {
+
         return;
+
     }
 
-    if (users.length === 0) {
+    if (!users.length) {
 
-        table.innerHTML = `
-            <div class="loading">
-                No users found.
-            </div>
-        `;
+        container.innerHTML =
+            '<div class="loading">No users found.</div>';
 
         return;
+
     }
 
     let html = `
-        <table class="data-table">
+        <div style="overflow-x:auto;">
+            <table style="
+                width:100%;
+                border-collapse:collapse;
+                font-size:12px;
+            ">
 
-            <thead>
+                <thead>
 
-                <tr>
+                    <tr>
 
-                    <th>Name</th>
+                        <th style="text-align:left;padding:10px;">
+                            Name
+                        </th>
 
-                    <th>Email</th>
+                        <th style="text-align:left;padding:10px;">
+                            Email
+                        </th>
 
-                    <th>Role</th>
+                        <th style="text-align:left;padding:10px;">
+                            Role
+                        </th>
 
-                    <th>Status</th>
+                        <th style="text-align:left;padding:10px;">
+                            Status
+                        </th>
 
-                </tr>
+                    </tr>
 
-            </thead>
+                </thead>
 
-            <tbody>
+                <tbody>
     `;
 
     users.forEach(
         user => {
 
+            const name =
+                user.full_name ||
+                user.name ||
+                "-";
+
+            const email =
+                user.email ||
+                "-";
+
+            const role =
+                user.role ||
+                "user";
+
+            const active =
+                user.is_active ??
+                user.active;
+
             html += `
-                <tr>
+                <tr style="border-top:1px solid #eaecf0;">
 
-                    <td>
-                        ${escapeHtml(
-                            user.full_name ||
-                            "-"
-                        )}
+                    <td style="padding:10px;">
+                        ${escapeHtml(name)}
                     </td>
 
-                    <td>
-                        ${escapeHtml(
-                            user.email ||
-                            "-"
-                        )}
+                    <td style="padding:10px;">
+                        ${escapeHtml(email)}
                     </td>
 
-                    <td>
-                        ${escapeHtml(
-                            user.role ||
-                            "-"
-                        )}
+                    <td style="padding:10px;">
+                        ${escapeHtml(role)}
                     </td>
 
-                    <td>
+                    <td style="padding:10px;">
                         ${
-                            user.is_active
-                                ? "Active"
-                                : "Inactive"
+                            active === undefined
+                                ? "-"
+                                : active
+                                    ? "Active"
+                                    : "Inactive"
                         }
                     </td>
 
                 </tr>
             `;
+
         }
     );
 
     html += `
-            </tbody>
+                </tbody>
 
-        </table>
+            </table>
+        </div>
     `;
 
-    table.innerHTML =
+    container.innerHTML =
         html;
+
 }
 
 
 // ============================================================
-// KEYBOARD SHORTCUT
+// ESCAPE HTML
 // ============================================================
 
-document.addEventListener(
-    "keydown",
-    event => {
+function escapeHtml(
+    value
+) {
 
-        const input =
-            $("chatInput");
+    if (
+        value === null ||
+        value === undefined
+    ) {
 
-        if (!input) {
-            return;
-        }
+        return "";
 
-        if (
-            document.activeElement === input &&
-            event.key === "Enter" &&
-            !event.shiftKey
-        ) {
+    }
 
-            event.preventDefault();
+    return String(value)
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
 
-            sendChat();
-        }
+}
+
+
+// ============================================================
+// GLOBAL ERROR LOGGING
+// ============================================================
+
+window.addEventListener(
+    "error",
+    function (event) {
+
+        console.error(
+            "Frontend error:",
+            event.error || event.message
+        );
+
     }
 );
 
 
 // ============================================================
-// INITIALIZATION
+// DEBUG
 // ============================================================
 
-document.addEventListener(
-    "DOMContentLoaded",
-    () => {
+console.log(
+    "=========================================="
+);
 
-        loadCurrentUser();
-    }
+console.log(
+    "EnterpriseIQ frontend loaded."
+);
+
+console.log(
+    "API:",
+    API_BASE_URL
+);
+
+console.log(
+    "=========================================="
 );
