@@ -28,7 +28,6 @@ def extract_json(
 ) -> dict:
 
     if not text:
-
         raise ValueError(
             "Planner returned an empty response."
         )
@@ -61,25 +60,19 @@ def extract_json(
 
     # First try direct JSON.
     try:
-
-        return json.loads(
-            text
-        )
-
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
 
     # Find JSON object inside response.
-    start = text.find(
-        "{"
-    )
+    start = text.find("{")
+    end = text.rfind("}")
 
-    end = text.rfind(
-        "}"
-    )
-
-    if start == -1 or end == -1 or end <= start:
-
+    if (
+        start == -1
+        or end == -1
+        or end <= start
+    ):
         raise ValueError(
             "Planner did not return valid JSON."
         )
@@ -89,13 +82,8 @@ def extract_json(
     ]
 
     try:
-
-        return json.loads(
-            json_text
-        )
-
+        return json.loads(json_text)
     except json.JSONDecodeError:
-
         raise ValueError(
             "Planner returned malformed JSON."
         )
@@ -113,19 +101,16 @@ def validate_plan(
         plan,
         list,
     ):
-
         raise ValueError(
             "Planner plan must be a list."
         )
 
     if not plan:
-
         raise ValueError(
             "Planner returned an empty plan."
         )
 
     validated_plan = []
-
     step_numbers = set()
 
     for step in plan:
@@ -134,7 +119,6 @@ def validate_plan(
             step,
             dict,
         ):
-
             raise ValueError(
                 "Each plan step must be an object."
             )
@@ -161,13 +145,11 @@ def validate_plan(
             step_number,
             int,
         ):
-
             raise ValueError(
                 "Plan step number must be an integer."
             )
 
         if step_number in step_numbers:
-
             raise ValueError(
                 "Duplicate plan step number."
             )
@@ -177,7 +159,6 @@ def validate_plan(
         )
 
         if tool not in ALLOWED_TOOLS:
-
             raise ValueError(
                 f"Invalid tool selected: {tool}"
             )
@@ -186,7 +167,6 @@ def validate_plan(
             depends_on,
             list,
         ):
-
             raise ValueError(
                 "depends_on must be a list."
             )
@@ -194,13 +174,11 @@ def validate_plan(
         for dependency in depends_on:
 
             if dependency not in ALLOWED_TOOLS:
-
                 raise ValueError(
                     f"Invalid dependency: {dependency}"
                 )
 
             if dependency == tool:
-
                 raise ValueError(
                     f"Tool cannot depend on itself: {tool}"
                 )
@@ -226,7 +204,6 @@ def validate_plan(
     )
 
     if step_numbers != expected_steps:
-
         raise ValueError(
             "Plan steps must be sequential starting from 1."
         )
@@ -252,7 +229,6 @@ def validate_plan(
         ]:
 
             if dependency not in completed_tools:
-
                 raise ValueError(
                     f"Dependency '{dependency}' "
                     f"must execute before "
@@ -276,7 +252,6 @@ def validate_plan(
         "general" in tools
         and len(tools) > 1
     ):
-
         raise ValueError(
             "General tool cannot be combined with other tools."
         )
@@ -345,6 +320,10 @@ def has_rag_intent(
             "documents",
             "uploaded file",
             "knowledge base",
+            "services does",
+            "services do",
+            "provide",
+            "provides",
         ],
     )
 
@@ -354,7 +333,6 @@ def has_calculator_intent(
 ) -> bool:
 
     # Explicit mathematical calculations.
-
     if contains_any(
         question_lower,
         [
@@ -369,25 +347,20 @@ def has_calculator_intent(
             "what is 18%",
         ],
     ):
-
         return True
 
     # Mathematical operators.
-
     if re.search(
-        r"\d+\s*[\+\-\*\/]\s*\d+",
+        r"\d+\s*[\+\-\*/]\s*\d+",
         question_lower,
     ):
-
         return True
 
     # Number followed by %.
-
     if re.search(
         r"\b\d+(?:\.\d+)?\s*%",
         question_lower,
     ):
-
         return True
 
     return False
@@ -397,17 +370,70 @@ def has_explicit_numeric_calculation(
     question_lower: str,
 ) -> bool:
 
-    return bool(
-        re.search(
-            r"\b\d+(?:\.\d+)?\s*%",
-            question_lower,
+    return (
+        bool(
+            re.search(
+                r"\b\d+(?:\.\d+)?\s*%",
+                question_lower,
+            )
         )
-    ) or bool(
-        re.search(
-            r"\d+\s*[\+\-\*\/]\s*\d+",
-            question_lower,
+        or bool(
+            re.search(
+                r"\d+\s*[\+\-\*/]\s*\d+",
+                question_lower,
+            )
         )
     )
+
+
+# =========================================================
+# DETERMINISTIC PLAN HELPERS
+# =========================================================
+
+def rag_only_plan(
+    reason: str,
+) -> dict:
+
+    return {
+        "plan": [
+            {
+                "step": 1,
+                "tool": "rag",
+                "depends_on": [],
+                "reason": reason,
+            }
+        ],
+        "tools": [
+            "rag"
+        ],
+        "reason": (
+            "Only RAG is required because "
+            "the requested information comes "
+            "from enterprise documents."
+        ),
+    }
+
+
+def sql_only_plan(
+    reason: str,
+) -> dict:
+
+    return {
+        "plan": [
+            {
+                "step": 1,
+                "tool": "sql",
+                "depends_on": [],
+                "reason": reason,
+            }
+        ],
+        "tools": [
+            "sql"
+        ],
+        "reason": (
+            "Only SQL is required."
+        ),
+    }
 
 
 # =========================================================
@@ -419,13 +445,79 @@ def create_deterministic_plan(
 ) -> dict | None:
 
     if not question or not question.strip():
-
         return None
 
-    question_lower = question.lower().strip()
+    question_lower = (
+        question.lower().strip()
+    )
 
     # -----------------------------------------------------
-    # General conversation
+    # STRONG RAG-ONLY RULES
+    #
+    # IMPORTANT:
+    # These rules execute BEFORE generic SQL detection.
+    #
+    # Therefore words such as:
+    #
+    # customer
+    # customers
+    #
+    # cannot incorrectly force SQL.
+    # -----------------------------------------------------
+
+    rag_only_phrases = [
+
+        # Discount / policy
+        "maximum standard discount",
+        "maximum discount allowed",
+        "maximum discount",
+        "standard discount allowed",
+        "allowed discount",
+        "discount policy",
+        "standard discount",
+        "what discount is allowed",
+
+        # Payment / document
+        "payment due date",
+        "due date",
+
+        # Company / services
+        "what services does",
+        "what services do",
+        "services does",
+        "services do",
+        "provide",
+        "provides",
+    ]
+
+    if contains_any(
+        question_lower,
+        rag_only_phrases,
+    ):
+
+        print(
+            "[PLANNER] Strong RAG-only rule matched."
+        )
+
+        print(
+            f"[PLANNER] Question: {question}"
+        )
+
+        print(
+            "[PLANNER] SQL explicitly disabled "
+            "for this document/policy question."
+        )
+
+        return rag_only_plan(
+            reason=(
+                "The question asks for "
+                "enterprise document, policy, "
+                "payment, or company information."
+            )
+        )
+
+    # -----------------------------------------------------
+    # GENERAL CONVERSATION
     # -----------------------------------------------------
 
     general_phrases = [
@@ -445,9 +537,15 @@ def create_deterministic_plan(
             question_lower,
             general_phrases,
         )
-        and not has_sql_intent(question_lower)
-        and not has_rag_intent(question_lower)
-        and not has_calculator_intent(question_lower)
+        and not has_sql_intent(
+            question_lower
+        )
+        and not has_rag_intent(
+            question_lower
+        )
+        and not has_calculator_intent(
+            question_lower
+        )
     ):
 
         return {
@@ -456,17 +554,21 @@ def create_deterministic_plan(
                     "step": 1,
                     "tool": "general",
                     "depends_on": [],
-                    "reason": "This is general conversation.",
+                    "reason": (
+                        "This is general conversation."
+                    ),
                 }
             ],
             "tools": [
                 "general"
             ],
-            "reason": "No enterprise tool is required.",
+            "reason": (
+                "No enterprise tool is required."
+            ),
         }
 
     # -----------------------------------------------------
-    # Intent detection
+    # INTENT DETECTION
     # -----------------------------------------------------
 
     sql_required = has_sql_intent(
@@ -482,35 +584,44 @@ def create_deterministic_plan(
     )
 
     # -----------------------------------------------------
-    # IMPORTANT FIX:
+    # DISCOUNT POLICY SAFETY
     #
-    # "maximum discount" / "discount policy"
-    # MUST be RAG, NOT SQL.
+    # Any policy-style discount question belongs to RAG.
     #
-    # Remove generic "discount" SQL possibility.
+    # Examples:
+    #
+    # maximum discount
+    # standard discount
+    # allowed discount
+    # discount policy
+    #
+    # Even if "customer" or "sales" appears,
+    # RAG remains the correct tool for the policy part.
     # -----------------------------------------------------
 
-    if rag_required:
-
-        sql_required = (
-            sql_required
-            and not (
-                question_lower.startswith(
-                    "what is the maximum"
-                )
-                and "discount" in question_lower
-            )
+    if (
+        "discount" in question_lower
+        and (
+            "maximum" in question_lower
+            or "standard" in question_lower
+            or "allowed" in question_lower
+            or "policy" in question_lower
         )
+    ):
+
+        rag_required = True
+
+        sql_required = False
 
     # -----------------------------------------------------
-    # Pure calculator question
-    #
-    # Example:
-    # 15% of 20000
-    # 18% GST on 220000
+    # PURE CALCULATOR
     # -----------------------------------------------------
 
-    if calculator_required and not sql_required and not rag_required:
+    if (
+        calculator_required
+        and not sql_required
+        and not rag_required
+    ):
 
         return {
             "plan": [
@@ -518,27 +629,30 @@ def create_deterministic_plan(
                     "step": 1,
                     "tool": "calculator",
                     "depends_on": [],
-                    "reason": "The question requires a mathematical calculation.",
+                    "reason": (
+                        "The question requires "
+                        "a mathematical calculation."
+                    ),
                 }
             ],
             "tools": [
                 "calculator"
             ],
-            "reason": "Only Calculator is required.",
+            "reason": (
+                "Only Calculator is required."
+            ),
         }
 
     # -----------------------------------------------------
-    # RAG only
+    # RAG ONLY
     # -----------------------------------------------------
 
-    if rag_required and not sql_required:
+    if (
+        rag_required
+        and not sql_required
+    ):
 
         if calculator_required:
-
-            # Example:
-            # "What is 25% of the maximum discount allowed?"
-            #
-            # RAG must provide the policy value first.
 
             return {
                 "plan": [
@@ -546,7 +660,10 @@ def create_deterministic_plan(
                         "step": 1,
                         "tool": "rag",
                         "depends_on": [],
-                        "reason": "RAG retrieves the required policy or document information.",
+                        "reason": (
+                            "RAG retrieves the required "
+                            "policy or document information."
+                        ),
                     },
                     {
                         "step": 2,
@@ -554,36 +671,38 @@ def create_deterministic_plan(
                         "depends_on": [
                             "rag"
                         ],
-                        "reason": "Calculator uses the value returned by RAG.",
+                        "reason": (
+                            "Calculator uses the value "
+                            "returned by RAG."
+                        ),
                     },
                 ],
                 "tools": [
                     "rag",
                     "calculator",
                 ],
-                "reason": "RAG retrieves the policy value and Calculator performs the calculation.",
+                "reason": (
+                    "RAG retrieves the policy value "
+                    "and Calculator performs the calculation."
+                ),
             }
 
-        return {
-            "plan": [
-                {
-                    "step": 1,
-                    "tool": "rag",
-                    "depends_on": [],
-                    "reason": "The requested information is contained in enterprise documents or policies.",
-                }
-            ],
-            "tools": [
-                "rag"
-            ],
-            "reason": "Only RAG is required.",
-        }
+        return rag_only_plan(
+            reason=(
+                "The requested information is "
+                "contained in enterprise documents "
+                "or policies."
+            )
+        )
 
     # -----------------------------------------------------
-    # SQL only
+    # SQL ONLY
     # -----------------------------------------------------
 
-    if sql_required and not rag_required:
+    if (
+        sql_required
+        and not rag_required
+    ):
 
         if calculator_required:
 
@@ -593,7 +712,10 @@ def create_deterministic_plan(
                         "step": 1,
                         "tool": "sql",
                         "depends_on": [],
-                        "reason": "SQL retrieves the required structured business value.",
+                        "reason": (
+                            "SQL retrieves the required "
+                            "structured business value."
+                        ),
                     },
                     {
                         "step": 2,
@@ -601,49 +723,56 @@ def create_deterministic_plan(
                         "depends_on": [
                             "sql"
                         ],
-                        "reason": "Calculator uses the value returned by SQL.",
+                        "reason": (
+                            "Calculator uses the value "
+                            "returned by SQL."
+                        ),
                     },
                 ],
                 "tools": [
                     "sql",
                     "calculator",
                 ],
-                "reason": "SQL retrieves the business value and Calculator performs the calculation.",
+                "reason": (
+                    "SQL retrieves the business value "
+                    "and Calculator performs the calculation."
+                ),
             }
 
-        return {
-            "plan": [
-                {
-                    "step": 1,
-                    "tool": "sql",
-                    "depends_on": [],
-                    "reason": "The requested structured business data is stored in the database.",
-                }
-            ],
-            "tools": [
-                "sql"
-            ],
-            "reason": "Only SQL is required.",
-        }
+        return sql_only_plan(
+            reason=(
+                "The requested structured business "
+                "data is stored in the database."
+            )
+        )
 
     # -----------------------------------------------------
     # SQL + RAG
     # -----------------------------------------------------
 
-    if sql_required and rag_required:
+    if (
+        sql_required
+        and rag_required
+    ):
 
         plan = [
             {
                 "step": 1,
                 "tool": "sql",
                 "depends_on": [],
-                "reason": "SQL retrieves the required structured business data.",
+                "reason": (
+                    "SQL retrieves the required "
+                    "structured business data."
+                ),
             },
             {
                 "step": 2,
                 "tool": "rag",
                 "depends_on": [],
-                "reason": "RAG retrieves the required policy or document information.",
+                "reason": (
+                    "RAG retrieves the required "
+                    "policy or document information."
+                ),
             },
         ]
 
@@ -651,11 +780,6 @@ def create_deterministic_plan(
             "sql",
             "rag",
         ]
-
-        # Calculator generally needs the SQL value
-        # for questions such as:
-        #
-        # "10% of Q2 sales and discount policy"
 
         if calculator_required:
 
@@ -666,7 +790,10 @@ def create_deterministic_plan(
                     "depends_on": [
                         "sql"
                     ],
-                    "reason": "Calculator uses the sales value returned by SQL.",
+                    "reason": (
+                        "Calculator uses the sales "
+                        "value returned by SQL."
+                    ),
                 }
             )
 
@@ -677,11 +804,15 @@ def create_deterministic_plan(
         return {
             "plan": plan,
             "tools": tools,
-            "reason": "SQL and RAG retrieve independent enterprise information, while Calculator uses the required numerical result.",
+            "reason": (
+                "SQL and RAG retrieve independent "
+                "enterprise information, while "
+                "Calculator uses the required numerical result."
+            ),
         }
 
     # -----------------------------------------------------
-    # No clear deterministic intent
+    # NO CLEAR DETERMINISTIC INTENT
     # -----------------------------------------------------
 
     return None
@@ -696,16 +827,12 @@ def create_plan(
 ) -> dict:
 
     if not question or not question.strip():
-
         raise ValueError(
             "Question cannot be empty."
         )
 
     # -----------------------------------------------------
     # First use deterministic planner.
-    #
-    # This protects important business-routing decisions
-    # from LLM mistakes.
     # -----------------------------------------------------
 
     deterministic_plan = (
@@ -757,9 +884,11 @@ Use for:
 - reports
 - uploaded files
 - payment due dates
+- company/service descriptions
 - knowledge-base information
 
 IMPORTANT:
+
 Discount policy ALWAYS belongs to RAG.
 
 Examples:
@@ -770,6 +899,9 @@ Examples:
 "what discount is allowed"
 
 These MUST use RAG.
+
+Company/service information contained in
+enterprise documents MUST use RAG.
 
 2. sql
 
@@ -801,17 +933,35 @@ require enterprise data.
 
 IMPORTANT RULES:
 
-- You can select MORE THAN ONE tool.
 - Select ONLY tools actually required.
 - Each tool should appear at most once.
 - SQL and RAG can run independently.
 - Calculator depends on SQL when it needs a SQL result.
-- Calculator depends on RAG when it needs a value from a document.
+- Calculator depends on RAG when it needs a document value.
 - Do not create unnecessary dependencies.
 - General cannot be combined with other tools.
-- Discount policies must NEVER be routed to SQL.
-- Enterprise document information must NEVER be routed to SQL.
-- Sales/revenue database information must use SQL.
+
+CRITICAL ROUTING RULE:
+
+If the question asks about a discount policy,
+maximum discount, standard discount, or allowed
+discount, use RAG and NEVER SQL.
+
+The presence of words such as:
+
+"customer"
+"customers"
+
+must NOT change a discount-policy question
+into SQL.
+
+CRITICAL ROUTING RULE:
+
+Company/service descriptions from enterprise
+documents must use RAG.
+
+Sales/revenue/order database information
+must use SQL.
 
 Return ONLY valid JSON.
 
@@ -821,37 +971,19 @@ Required format:
     "plan": [
         {
             "step": 1,
-            "tool": "sql",
+            "tool": "rag",
             "depends_on": [],
-            "reason": "Sales data is required from the database."
+            "reason": "The information is contained in enterprise documents."
         }
     ],
-    "reason": "Only SQL is required."
+    "reason": "Only RAG is required."
 }
 
-Example 1:
+Example:
 
 Question:
-What was the Q2 sales for the West region?
-
-Return:
-
-{
-    "plan": [
-        {
-            "step": 1,
-            "tool": "sql",
-            "depends_on": [],
-            "reason": "Q2 West sales are stored in the database."
-        }
-    ],
-    "reason": "Only SQL is required."
-}
-
-Example 2:
-
-Question:
-What is the maximum standard discount allowed?
+What is the maximum standard discount allowed
+for any customer?
 
 Return:
 
@@ -867,10 +999,26 @@ Return:
     "reason": "Only RAG is required."
 }
 
-Example 3:
+Question:
+What was the Q2 sales?
+
+Return:
+
+{
+    "plan": [
+        {
+            "step": 1,
+            "tool": "sql",
+            "depends_on": [],
+            "reason": "Q2 sales are stored in the database."
+        }
+    ],
+    "reason": "Only SQL is required."
+}
 
 Question:
-What were Q2 West sales and what is the maximum discount policy?
+What were Q2 West sales and what is the
+maximum discount policy?
 
 Return:
 
@@ -892,65 +1040,6 @@ Return:
     "reason": "SQL and RAG are independent."
 }
 
-Example 4:
-
-Question:
-What were Q2 West sales and what would a 10% discount on that amount be?
-
-Return:
-
-{
-    "plan": [
-        {
-            "step": 1,
-            "tool": "sql",
-            "depends_on": [],
-            "reason": "SQL retrieves Q2 West sales."
-        },
-        {
-            "step": 2,
-            "tool": "calculator",
-            "depends_on": ["sql"],
-            "reason": "Calculator needs the sales amount returned by SQL."
-        }
-    ],
-    "reason": "Calculator depends on SQL."
-}
-
-Example 5:
-
-Question:
-What were Q2 West sales, what is the discount policy,
-and what would a 10% discount on those sales be?
-
-Return:
-
-{
-    "plan": [
-        {
-            "step": 1,
-            "tool": "sql",
-            "depends_on": [],
-            "reason": "SQL retrieves Q2 West sales."
-        },
-        {
-            "step": 2,
-            "tool": "rag",
-            "depends_on": [],
-            "reason": "RAG retrieves the discount policy."
-        },
-        {
-            "step": 3,
-            "tool": "calculator",
-            "depends_on": ["sql"],
-            "reason": "Calculator uses the sales amount returned by SQL."
-        }
-    ],
-    "reason": "SQL and RAG provide the required information and Calculator uses the SQL amount."
-}
-
-Example 6:
-
 Question:
 What is 18% GST on 220000?
 
@@ -967,8 +1056,6 @@ Return:
     ],
     "reason": "Only Calculator is required."
 }
-
-Example 7:
 
 Question:
 Hello, how are you?

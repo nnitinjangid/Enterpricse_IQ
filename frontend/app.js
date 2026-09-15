@@ -2516,3 +2516,72 @@ console.log(
 console.log(
     "=========================================="
 );
+
+// ============================================================
+// EVALUATION METRICS EXTRACTOR
+// ============================================================
+
+function extractEvaluationMetrics(data) {
+
+    if (
+        !data ||
+        typeof data !== "object"
+    ) {
+        return {};
+    }
+
+    // Most likely backend response
+    if (
+        data.metrics &&
+        typeof data.metrics === "object"
+    ) {
+        return data.metrics;
+    }
+
+    // Alternative response structure
+    if (
+        data.average_metrics &&
+        typeof data.average_metrics === "object"
+    ) {
+        return data.average_metrics;
+    }
+
+    // Nested result
+    if (
+        data.result &&
+        typeof data.result === "object"
+    ) {
+
+        const nested =
+            extractEvaluationMetrics(
+                data.result
+            );
+
+        if (
+            Object.keys(nested).length
+        ) {
+            return nested;
+        }
+    }
+
+    // Nested data
+    if (
+        data.data &&
+        typeof data.data === "object"
+    ) {
+
+        const nested =
+            extractEvaluationMetrics(
+                data.data
+            );
+
+        if (
+            Object.keys(nested).length
+        ) {
+            return nested;
+        }
+    }
+
+    // If metrics are directly in response
+    return data;
+}

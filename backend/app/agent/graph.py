@@ -1,22 +1,16 @@
-
 import re
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from groq import Groq
-
 from langgraph.graph import END, START, StateGraph
-
 from sqlalchemy.orm import Session
 
 from app.agent.state import AgentState
-
 from app.core.config import settings
 
 from app.services.rag_service import ask_rag
-
 from app.services.sql_service import ask_sql
-
 from app.services.security_service import validate_user_query
 
 
@@ -74,236 +68,49 @@ def security_node(
 
 
 # =========================================================
-# Deterministic Routing
+# Derive Route From Tools
+# =========================================================
+#
+# IMPORTANT:
+#
+# tools are the source of truth.
+#
+# Never allow an incorrect planner route to overwrite
+# the route when the selected tools are already correct.
+#
+# Priority:
+#
+# SQL > RAG > Calculator > General
+#
+# This also supports multi-tool questions:
+#
+# sql + calculator
+# sql + rag
+# sql + rag + calculator
+#
 # =========================================================
 
-def apply_deterministic_routing(
-    question: str,
-):
-
-    q = question.lower()
-
-    tools = set()
-
-    # -----------------------------------------------------
-    # Calculator intent
-    # -----------------------------------------------------
-
-    calculation_patterns = [
-
-        r"\bpercentage of\b",
-
-        r"\bpercent of\b",
-
-        r"\b\d+\s*%\s*of\b",
-
-        r"\bdiscount on\b",
-
-        r"\bgst on\b",
-
-        r"\btax on\b",
-
-        r"\bcalculate\b",
-    ]
-
-    for pattern in calculation_patterns:
-
-        if re.search(
-            pattern,
-            q,
-        ):
-
-            tools.add(
-                "calculator"
-            )
-
-            break
-
-    # -----------------------------------------------------
-    # Arithmetic expressions
-    # -----------------------------------------------------
-
-    arithmetic_pattern = (
-        r"\d+\s*[\+\-\*/]\s*\d+"
-    )
-
-    if re.search(
-        arithmetic_pattern,
-        q,
-    ):
-
-        tools.add(
-            "calculator"
-        )
-
-    # -----------------------------------------------------
-    # Percentage
-    # -----------------------------------------------------
-
-    if re.search(
-        r"\d+\s*%",
-        q,
-    ):
-
-        tools.add(
-            "calculator"
-        )
-
-    # -----------------------------------------------------
-    # SQL intent
-    # -----------------------------------------------------
-
-    sql_keywords = [
-
-        "sales",
-
-        "sale",
-
-        "revenue",
-
-        "amount",
-
-        "quantity",
-
-        "customer",
-
-        "customers",
-
-        "records",
-
-        "database",
-
-        "q1",
-
-        "q2",
-
-        "q3",
-
-        "q4",
-
-        "quarter",
-
-        "transaction",
-    ]
-
-    has_sql_intent = any(
-        keyword in q
-        for keyword in sql_keywords
-    )
-
-    if has_sql_intent:
-
-        tools.add(
-            "sql"
-        )
-
-    # -----------------------------------------------------
-    # RAG intent
-    # -----------------------------------------------------
-
-    rag_keywords = [
-
-        "policy",
-
-        "policies",
-
-        "document",
-
-        "documents",
-
-        "discount allowed",
-
-        "maximum discount",
-
-        "payment due",
-
-        "due date",
-
-        "terms",
-
-        "guideline",
-
-        "guidelines",
-    ]
-
-    has_rag_intent = any(
-        keyword in q
-        for keyword in rag_keywords
-    )
-
-    if has_rag_intent:
-
-        tools.add(
-            "rag"
-        )
-
-    # -----------------------------------------------------
-    # No deterministic route
-    # -----------------------------------------------------
+def derive_route_from_tools(
+    tools: list[str],
+) -> str:
 
     if not tools:
 
-        return None
-
-    # -----------------------------------------------------
-    # Stable tool ordering
-    # -----------------------------------------------------
-
-    ordered_tools = []
+        return "general"
 
     if "sql" in tools:
 
-        ordered_tools.append(
-            "sql"
-        )
+        return "sql"
 
     if "rag" in tools:
 
-        ordered_tools.append(
-            "rag"
-        )
+        return "rag"
 
     if "calculator" in tools:
 
-        ordered_tools.append(
-            "calculator"
-        )
+        return "calculator"
 
-    # -----------------------------------------------------
-    # Primary route
-    # -----------------------------------------------------
-
-    if "sql" in ordered_tools:
-
-        route = "sql"
-
-    elif "rag" in ordered_tools:
-
-        route = "rag"
-
-    else:
-
-        route = "calculator"
-
-    return {
-        "route": route,
-
-        "tools": ordered_tools,
-
-        "route_confidence": 1.0,
-
-        "plan_reason": (
-            "Deterministic intent routing."
-        ),
-
-        "plan": [
-            {
-                "tool": tool,
-                "reason": "Detected from user query.",
-            }
-            for tool in ordered_tools
-        ],
-    }
+    return "general"
 
 
 # =========================================================
@@ -319,123 +126,41 @@ def planner_node(
         "",
     )
 
-    # -----------------------------------------------------
-    # Deterministic routing first
-    # -----------------------------------------------------
-
-    deterministic_result = (
-        apply_deterministic_routing(
-            question
-        )
-    )
-
-    if deterministic_result:
-
-        return deterministic_result
-
-    # -----------------------------------------------------
-    # LLM planner fallback
-    # -----------------------------------------------------
-
-    client = Groq(
-        api_key=settings.GROQ_API_KEY
-    )
-
-    prompt = f"""
-You are the routing planner for EnterpriseIQ.
-
-EnterpriseIQ has these tools:
-
-1. RAG
-
-   Use for enterprise documents, policies,
-   rules, payment terms and document facts.
-
-2. SQL
-
-   Use for structured database information,
-   sales, revenue, records, quantities,
-   totals and counts.
-
-3. Calculator
-
-   Use for arithmetic and percentage calculations.
-
-4. General
-
-   Use when no enterprise tool is required.
-
-User question:
-
-{question}
-
-Return ONLY a comma-separated list of tools.
-
-Possible outputs:
-
-rag
-
-sql
-
-calculator
-
-rag,calculator
-
-sql,calculator
-
-sql,rag
-
-sql,rag,calculator
-
-general
-
-Do not add explanations.
-"""
-
     try:
 
-        response = client.chat.completions.create(
+        from app.agent.planner import create_plan
 
-            model=settings.GROQ_MODEL,
-
-            messages=[
-
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a precise tool router."
-                    ),
-                },
-
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-
-            temperature=0,
-
-            max_tokens=100,
+        result = create_plan(
+            question
         )
 
-        content = (
-            response.choices[0]
-            .message
-            .content
+        if not result:
+
+            return {
+                "route": "general",
+                "tools": ["general"],
+                "route_confidence": 0.0,
+                "plan_reason": (
+                    "Planner returned no result."
+                ),
+                "plan": [
+                    {
+                        "tool": "general",
+                        "reason": "No valid plan returned.",
+                    }
+                ],
+            }
+
+        # -------------------------------------------------
+        # Get planner tools
+        # -------------------------------------------------
+
+        tools = result.get(
+            "tools",
+            [],
         )
 
-        if not content:
-
-            raise ValueError(
-                "Planner returned an empty response."
-            )
-
-        raw_tools = [
-            item.strip().lower()
-            for item in content.split(",")
-        ]
-
-        valid_tools = {
+        allowed_tools = {
             "rag",
             "sql",
             "calculator",
@@ -444,8 +169,8 @@ Do not add explanations.
 
         tools = [
             tool
-            for tool in raw_tools
-            if tool in valid_tools
+            for tool in tools
+            if tool in allowed_tools
         ]
 
         if not tools:
@@ -454,43 +179,130 @@ Do not add explanations.
                 "general"
             ]
 
-        return {
+        # -------------------------------------------------
+        # Strong RAG-only protection
+        # -------------------------------------------------
 
-            "route": tools[0],
+        question_lower = question.lower().strip()
 
-            "tools": tools,
+        rag_only_phrases = [
+            "maximum standard discount",
+            "maximum discount allowed",
+            "maximum discount",
+            "standard discount allowed",
+            "allowed discount",
+            "discount policy",
+            "standard discount",
+            "what discount is allowed",
+            "payment due date",
+            "due date",
+            "what services does",
+            "what services do",
+            "services does",
+            "services do",
+        ]
 
-            "route_confidence": 0.9,
+        matched_rag_phrase = any(
+            phrase in question_lower
+            for phrase in rag_only_phrases
+        )
 
-            "plan_reason": (
-                "LLM-based tool planning."
-            ),
+        if matched_rag_phrase:
 
-            "plan": [
+            print(
+                "[GRAPH] Strong RAG-only protection matched."
+            )
+
+            print(
+                f"[GRAPH] Question: {question}"
+            )
+
+            print(
+                "[GRAPH] SQL disabled for document/policy question."
+            )
+
+            tools = [
+                "rag"
+            ]
+
+            plan_reason = (
+                "Strong RAG-only document/policy protection."
+            )
+
+            plan = [
                 {
-                    "tool": tool,
-                    "reason": "Selected by planner.",
+                    "tool": "rag",
+                    "reason": (
+                        "Document/policy question requires "
+                        "enterprise document retrieval."
+                    ),
                 }
-                for tool in tools
-            ],
+            ]
+
+            route_confidence = 1.0
+
+        else:
+
+            plan_reason = result.get(
+                "plan_reason",
+                "",
+            )
+
+            plan = result.get(
+                "plan",
+                [],
+            )
+
+            route_confidence = result.get(
+                "route_confidence",
+                0.0,
+            )
+
+        # -------------------------------------------------
+        # IMPORTANT:
+        #
+        # Route is ALWAYS derived from final tools.
+        #
+        # Do not trust a stale/incorrect route returned
+        # by planner.py.
+        # -------------------------------------------------
+
+        route = derive_route_from_tools(
+            tools
+        )
+
+        print(
+            "[GRAPH] Final route derived from tools:",
+            route,
+        )
+
+        print(
+            "[GRAPH] Final tools:",
+            tools,
+        )
+
+        return {
+            "route": route,
+            "tools": tools,
+            "route_confidence": route_confidence,
+            "plan_reason": plan_reason,
+            "plan": plan,
         }
 
     except Exception as e:
 
+        print(
+            "[GRAPH] Planner error:",
+            str(e),
+        )
+
         return {
-
             "route": "general",
-
-            "tools": [
-                "general"
-            ],
-
+            "tools": ["general"],
             "route_confidence": 0.0,
-
             "plan_reason": (
                 f"Planner fallback: {str(e)}"
             ),
-
             "plan": [
                 {
                     "tool": "general",
@@ -526,13 +338,9 @@ def rag_node(
     try:
 
         result = ask_rag(
-
             question=question,
-
             db=db,
-
             user_id=user_id,
-
             user_role=user_role,
         )
 
@@ -547,32 +355,22 @@ def rag_node(
         )
 
         return {
-
             "tool_results": {
-
                 "rag": {
-
                     "answer": safe_answer,
-
                     "sources": safe_sources,
                 }
             },
-
             "sources": safe_sources,
         }
 
     except Exception as e:
 
         return {
-
             "tool_results": {
-
                 "rag": {
-
                     "error": str(e),
-
                     "answer": "",
-
                     "sources": [],
                 }
             }
@@ -596,16 +394,12 @@ def sql_node(
     try:
 
         result = ask_sql(
-
             question=question,
-
             db=db,
         )
 
         return {
-
             "tool_results": {
-
                 "sql": result
             }
         }
@@ -613,11 +407,8 @@ def sql_node(
     except Exception as e:
 
         return {
-
             "tool_results": {
-
                 "sql": {
-
                     "error": str(e)
                 }
             }
@@ -645,11 +436,8 @@ def execute_parallel_independent_tools(
         }
 
     executable_tools = [
-
         tool
-
         for tool in tools
-
         if tool in {
             "rag",
             "sql",
@@ -677,11 +465,8 @@ def execute_parallel_independent_tools(
             if tool == "rag":
 
                 future = executor.submit(
-
                     rag_node,
-
                     state,
-
                     db,
                 )
 
@@ -690,11 +475,8 @@ def execute_parallel_independent_tools(
             elif tool == "sql":
 
                 future = executor.submit(
-
                     sql_node,
-
                     state,
-
                     db,
                 )
 
@@ -775,7 +557,9 @@ def build_calculator_context(
 
         return ""
 
-    return str(results)
+    return str(
+        results
+    )
 
 
 # =========================================================
@@ -797,26 +581,12 @@ def calculator_node(
 
     try:
 
-        # -------------------------------------------------
-        # IMPORTANT:
-        #
-        # calculator_service.py contains:
-        #
-        # calculate(...)
-        #
-        # NOT:
-        #
-        # calculate_expression(...)
-        # -------------------------------------------------
-
         from app.services.calculator_service import (
             calculate,
         )
 
         result = calculate(
-
             question=question,
-
             context=context,
         )
 
@@ -832,7 +602,6 @@ def calculator_node(
         ] = result
 
         return {
-
             "tool_results": tool_results
         }
 
@@ -853,12 +622,10 @@ def calculator_node(
         tool_results[
             "calculator"
         ] = {
-
             "error": str(e)
         }
 
         return {
-
             "tool_results": tool_results
         }
 
@@ -890,12 +657,9 @@ Answer the following user question:
 Rules:
 
 1. Be concise.
-
 2. Do not invent enterprise facts.
-
 3. Do not claim access to enterprise data
    unless a tool has provided that data.
-
 4. If enterprise information is required but
    no enterprise tool was selected, clearly say
    that the required information could not be retrieved.
@@ -904,26 +668,20 @@ Rules:
     try:
 
         response = client.chat.completions.create(
-
             model=settings.GROQ_MODEL,
-
             messages=[
-
                 {
                     "role": "system",
                     "content": (
                         "You are EnterpriseIQ."
                     ),
                 },
-
                 {
                     "role": "user",
                     "content": prompt,
                 },
             ],
-
             temperature=0,
-
             max_tokens=500,
         )
 
@@ -934,13 +692,9 @@ Rules:
         )
 
         return {
-
             "answer": (
-
                 answer.strip()
-
                 if answer
-
                 else "I could not generate an answer."
             )
         }
@@ -948,7 +702,6 @@ Rules:
     except Exception:
 
         return {
-
             "answer": (
                 "I could not generate an answer."
             )
@@ -1284,10 +1037,6 @@ def extract_citations(
 
     citations = []
 
-    # -----------------------------------------------------
-    # [filename, Page X]
-    # -----------------------------------------------------
-
     page_pattern = re.compile(
         r"\[([^\[\]]+?),\s*Page\s+(\d+)\]",
         flags=re.IGNORECASE,
@@ -1314,10 +1063,6 @@ def extract_citations(
             citations.append(
                 citation
             )
-
-    # -----------------------------------------------------
-    # [filename]
-    # -----------------------------------------------------
 
     simple_pattern = re.compile(
         r"\[([^\[\],]+?\.(?:pdf|docx|xlsx|xls|csv))\]",
@@ -1360,11 +1105,6 @@ def filter_used_sources(
     used_citations = extract_citations(
         answer
     )
-
-    # -----------------------------------------------------
-    # If answer contains citations,
-    # return only those sources.
-    # -----------------------------------------------------
 
     if used_citations:
 
@@ -1435,12 +1175,6 @@ def filter_used_sources(
 
         return filtered_sources
 
-    # -----------------------------------------------------
-    # No citation in answer.
-    #
-    # Return only first relevant source.
-    # -----------------------------------------------------
-
     first_source = None
 
     for source in rag_sources:
@@ -1500,6 +1234,53 @@ def generate_final_answer(
             "I could not retrieve any information "
             "to answer the question."
         )
+
+    # -----------------------------------------------------
+    # IMPORTANT:
+    #
+    # If this is a RAG-only result, return the already
+    # grounded RAG answer directly.
+    #
+    # This avoids unnecessary LLM rewriting and preserves
+    # document facts/citations.
+    # -----------------------------------------------------
+
+    if (
+        "rag" in tool_results
+        and len(tool_results) == 1
+    ):
+
+        rag_result = tool_results.get(
+            "rag"
+        )
+
+        if isinstance(
+            rag_result,
+            dict,
+        ):
+
+            rag_error = rag_result.get(
+                "error"
+            )
+
+            rag_answer = rag_result.get(
+                "answer",
+                "",
+            )
+
+            if (
+                not rag_error
+                and rag_answer
+            ):
+
+                return normalize_citations(
+                    rag_answer.strip()
+                )
+
+    # -----------------------------------------------------
+    # Multi-tool / SQL / Calculator questions
+    # still use final LLM synthesis.
+    # -----------------------------------------------------
 
     result_text = build_final_tool_context(
         tool_results
@@ -1568,13 +1349,9 @@ CONFLICT HANDLING
 If SQL and a document contain different values:
 
 1. Do not silently merge them.
-
 2. Do not replace the SQL value with the document value.
-
 3. Do not claim a document value came from the database.
-
 4. Respect the source of each value.
-
 5. Explain the distinction briefly when relevant.
 
 
@@ -1600,44 +1377,20 @@ ANSWER RULES
 =========================================================
 
 1. Answer the actual user question.
-
 2. Use only the provided tool results.
-
 3. Do not invent information.
-
 4. Do not use outside knowledge.
-
 5. Keep the answer concise.
-
 6. Combine multiple tools when necessary.
-
 7. Use SQL values exactly.
-
 8. Use calculator values exactly.
-
 9. Preserve document citations.
-
 10. Do not expose raw SQL queries.
-
 11. Do not expose internal tool JSON.
-
 12. Do not expose retrieval scores.
-
 13. Do not expose full document chunks.
-
 14. Do not mention internal routing or planning.
-
 15. If information is unavailable, clearly say so.
-
-IMPORTANT SOURCE RULE:
-
-Only cite documents that actually support a statement
-in your answer.
-
-Do NOT cite every retrieved document.
-
-If a retrieved document was not used to answer the
-question, do not cite it.
 
 Document citations must use exactly:
 
@@ -1647,9 +1400,7 @@ For sources without a page number:
 
 [filename]
 
-Do not use Unicode citation brackets such as 【 】.
-
-IMPORTANT CALCULATOR RULE:
+Do not use Unicode citation brackets.
 
 If the calculator result contains:
 
@@ -1660,9 +1411,6 @@ then use exactly:
 3,000
 
 as the answer.
-
-Do NOT say that the calculator returned no value
-when a calculator result is present.
 """
 
     client = Groq(
@@ -1670,11 +1418,8 @@ when a calculator result is present.
     )
 
     response = client.chat.completions.create(
-
         model=settings.GROQ_MODEL,
-
         messages=[
-
             {
                 "role": "system",
                 "content": (
@@ -1682,15 +1427,12 @@ when a calculator result is present.
                     "grounded enterprise assistant."
                 ),
             },
-
             {
                 "role": "user",
                 "content": prompt,
             },
         ],
-
         temperature=0,
-
         max_tokens=800,
     )
 
@@ -1730,39 +1472,25 @@ def final_answer_node(
         {},
     )
 
-    # -----------------------------------------------------
-    # Security blocked request
-    # -----------------------------------------------------
-
     if state.get(
         "security_status"
     ) == "blocked":
 
         return {
-
             "answer": state.get(
-
                 "answer",
-
                 "I cannot process this request because "
                 "it contains a potentially unsafe instruction.",
             ),
-
             "sources": [],
         }
 
     try:
 
         answer = generate_final_answer(
-
             question=question,
-
             tool_results=tool_results,
         )
-
-        # -------------------------------------------------
-        # Extract RAG sources
-        # -------------------------------------------------
 
         rag_result = tool_results.get(
             "rag",
@@ -1781,34 +1509,23 @@ def final_answer_node(
                 [],
             )
 
-        # -------------------------------------------------
-        # Only sources actually cited in final answer
-        # -------------------------------------------------
-
         sources = filter_used_sources(
-
             answer=answer,
-
             rag_sources=rag_sources,
         )
 
         return {
-
             "answer": answer,
-
             "sources": sources,
         }
 
     except Exception as e:
 
         return {
-
             "answer": (
                 "I could not generate the final answer."
             ),
-
             "error": str(e),
-
             "sources": [],
         }
 
@@ -1921,40 +1638,28 @@ def build_agent_graph():
     )
 
     graph.add_conditional_edges(
-
         "security",
-
         security_router,
-
         {
             "planner": "planner",
-
             "final": "final",
         },
     )
 
     graph.add_conditional_edges(
-
         "planner",
-
         planner_router,
-
         {
             "tools": "tools",
-
             "general": "general",
         },
     )
 
     graph.add_conditional_edges(
-
         "tools",
-
         calculator_router,
-
         {
             "calculator": "calculator",
-
             "final": "final",
         },
     )
@@ -2045,6 +1750,21 @@ def run_agent(
         planner_result
     )
 
+    print(
+        "[AGENT] Route:",
+        state.get("route"),
+    )
+
+    print(
+        "[AGENT] Tools:",
+        state.get("tools"),
+    )
+
+    print(
+        "[AGENT] Plan:",
+        state.get("plan"),
+    )
+
     # =====================================================
     # Step 3: General question
     # =====================================================
@@ -2117,4 +1837,3 @@ def run_agent(
     )
 
     return state
-

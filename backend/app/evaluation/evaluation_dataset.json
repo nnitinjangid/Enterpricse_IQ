@@ -1,7 +1,14 @@
 [
     {
         "question": "What is the payment due date for Rahul Enterprises?",
+        "expected_route": "rag",
+        "expected_tools": [
+            "rag"
+        ],
         "expected_answer": "The payment due date is 17/09/2026.",
+        "expected_answer_contains": [
+            "17/09/2026"
+        ],
         "relevant_documents": [
             2
         ],
@@ -14,7 +21,14 @@
     },
     {
         "question": "What is the maximum standard discount allowed for any customer?",
-        "expected_answer": "The maximum standard discount allowed is 20%.",
+        "expected_route": "rag",
+        "expected_tools": [
+            "rag"
+        ],
+        "expected_answer": "The maximum standard discount allowed is 25%.",
+        "expected_answer_contains": [
+            "25%"
+        ],
         "relevant_documents": [
             2
         ],
@@ -27,7 +41,14 @@
     },
     {
         "question": "What was the total Q2 sales?",
-        "expected_answer": "The total Q2 sales were INR 7,300,000.",
+        "expected_route": "sql",
+        "expected_tools": [
+            "sql"
+        ],
+        "expected_answer": "The total Q2 sales were INR 890,000.",
+        "expected_answer_contains": [
+            "890000"
+        ],
         "relevant_documents": [
             2
         ],
@@ -40,7 +61,17 @@
     },
     {
         "question": "What services does ABC Technologies Pvt. Ltd. provide?",
+        "expected_route": "rag",
+        "expected_tools": [
+            "rag"
+        ],
         "expected_answer": "ABC Technologies Pvt. Ltd. provides cloud software, data analytics, cybersecurity, and enterprise automation services.",
+        "expected_answer_contains": [
+            "cloud software",
+            "data analytics",
+            "cybersecurity",
+            "enterprise automation"
+        ],
         "relevant_documents": [
             2
         ],

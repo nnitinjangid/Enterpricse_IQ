@@ -15,6 +15,76 @@ _reranker = None
 
 
 # =========================================================
+# Source Authority
+# =========================================================
+
+HIGH_AUTHORITY_KEYWORDS = [
+    "policy",
+    "policies",
+    "official",
+    "approved",
+    "handbook",
+    "guideline",
+    "guidelines",
+    "rules",
+    "standard",
+    "contract",
+    "agreement",
+    "terms",
+    "compliance",
+    "procedure",
+    "procedures",
+]
+
+LOW_AUTHORITY_KEYWORDS = [
+    "fake",
+    "sample",
+    "test",
+    "dummy",
+    "example",
+    "mock",
+    "draft",
+]
+
+
+def calculate_source_authority(
+    filename: str,
+) -> float:
+    """
+    Calculate a lightweight source-authority score
+    from the document filename.
+
+    Higher score:
+        official / policy / approved documents
+
+    Lower score:
+        fake / sample / test / dummy documents
+
+    This score is only used as a tie-breaker /
+    authority signal after semantic relevance.
+    """
+
+    if not filename:
+        return 0.0
+
+    normalized_filename = filename.lower()
+
+    score = 0.0
+
+    for keyword in HIGH_AUTHORITY_KEYWORDS:
+
+        if keyword in normalized_filename:
+            score += 1.0
+
+    for keyword in LOW_AUTHORITY_KEYWORDS:
+
+        if keyword in normalized_filename:
+            score -= 1.0
+
+    return score
+
+
+# =========================================================
 # Load Reranker
 # =========================================================
 
@@ -51,24 +121,29 @@ def rerank_results(
     """
     Rerank retrieved chunks using a Cross-Encoder.
 
-    The Cross-Encoder directly evaluates:
-    
-        Query + Document Chunk
+    Ranking considers:
 
-    and produces a relevance score.
+    1. Semantic relevance from Cross-Encoder
+    2. Source authority from document metadata
+
+    The authority signal is intentionally small so that
+    relevance remains the primary ranking factor.
     """
 
     if not query or not query.strip():
+
         raise ValueError(
             "Query cannot be empty."
         )
 
     if top_k <= 0:
+
         raise ValueError(
             "top_k must be greater than 0."
         )
 
     if not results:
+
         return []
 
     # =====================================================
@@ -85,6 +160,7 @@ def rerank_results(
         )
 
         if not content:
+
             content = ""
 
         pairs.append(
@@ -95,7 +171,7 @@ def rerank_results(
         )
 
     # =====================================================
-    # Generate Reranker Scores
+    # Generate Cross-Encoder Scores
     # =====================================================
 
     model = get_reranker()
@@ -115,10 +191,54 @@ def rerank_results(
         scores,
     ):
 
+        filename = result.get(
+            "filename",
+            "",
+        )
+
+        rerank_score = float(
+            score
+        )
+
+        source_authority = (
+            calculate_source_authority(
+                filename
+            )
+        )
+
+        # -------------------------------------------------
+        # Authority adjustment
+        #
+        # Semantic relevance remains dominant.
+        # Authority is used as a small tie-breaker.
+        # -------------------------------------------------
+
+        authority_adjustment = (
+            source_authority * 0.25
+        )
+
+        final_rerank_score = (
+            rerank_score
+            + authority_adjustment
+        )
+
         updated_result = {
             **result,
-            "rerank_score": float(score),
-            "retrieval_method": "hybrid_reranked",
+
+            # Original model score
+            "rerank_score": rerank_score,
+
+            # Source authority
+            "source_authority": source_authority,
+
+            # Final ranking score
+            "final_rerank_score": (
+                final_rerank_score
+            ),
+
+            "retrieval_method": (
+                "hybrid_reranked"
+            ),
         }
 
         reranked_results.append(
@@ -126,12 +246,12 @@ def rerank_results(
         )
 
     # =====================================================
-    # Sort by Reranker Score
+    # Sort
     # =====================================================
 
     reranked_results.sort(
         key=lambda item: item[
-            "rerank_score"
+            "final_rerank_score"
         ],
         reverse=True,
     )

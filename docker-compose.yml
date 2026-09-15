@@ -1,16 +1,18 @@
 services:
 
-  # ==========================================
-  # MySQL Database
-  # ==========================================
+  # =========================================================
+  # MySQL
+  # =========================================================
+
   mysql:
     image: mysql:8.0
+
     container_name: enterpriseiq-mysql
 
     restart: unless-stopped
 
     environment:
-      MYSQL_ROOT_PASSWORD: enterpriseiq_root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: enterpriseiq
 
     ports:
@@ -29,18 +31,20 @@ services:
           "localhost",
           "-u",
           "root",
-          "-penterpriseiq_root"
+          "-p${MYSQL_ROOT_PASSWORD}"
         ]
       interval: 10s
       timeout: 5s
       retries: 10
 
 
-  # ==========================================
-  # Qdrant Vector Database
-  # ==========================================
+  # =========================================================
+  # Qdrant
+  # =========================================================
+
   qdrant:
     image: qdrant/qdrant:latest
+
     container_name: enterpriseiq-qdrant
 
     restart: unless-stopped
@@ -53,9 +57,10 @@ services:
       - qdrant_data:/qdrant/storage
 
 
-  # ==========================================
-  # EnterpriseIQ FastAPI Backend
-  # ==========================================
+  # =========================================================
+  # EnterpriseIQ Backend
+  # =========================================================
+
   backend:
     build:
       context: ./backend
@@ -65,25 +70,6 @@ services:
 
     restart: unless-stopped
 
-    ports:
-      - "8000:8000"
-
-    env_file:
-      - ./backend/.env
-
-    environment:
-      # Docker service names are used instead of localhost
-      DATABASE_URL: mysql+mysqlconnector://root:enterpriseiq_root@mysql:3306/enterpriseiq
-
-      QDRANT_URL: http://qdrant:6333
-
-      QDRANT_COLLECTION: enterpriseiq_documents
-
-      EMBEDDING_MODEL: all-MiniLM-L6-v2
-
-    volumes:
-      - ./backend/uploads:/app/uploads
-
     depends_on:
       mysql:
         condition: service_healthy
@@ -91,10 +77,61 @@ services:
       qdrant:
         condition: service_started
 
+    environment:
 
-# ==========================================
+      # -----------------------------------------------------
+      # Application
+      # -----------------------------------------------------
+
+      APP_NAME: EnterpriseIQ
+      APP_ENV: production
+      DEBUG: "False"
+
+      # -----------------------------------------------------
+      # MySQL
+      # -----------------------------------------------------
+
+      DATABASE_URL: mysql+mysqlconnector://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/enterpriseiq
+
+      # -----------------------------------------------------
+      # Authentication
+      # -----------------------------------------------------
+
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+
+      # -----------------------------------------------------
+      # Qdrant
+      # -----------------------------------------------------
+
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: enterpriseiq_documents
+
+      # -----------------------------------------------------
+      # Embeddings
+      # -----------------------------------------------------
+
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+
+      # -----------------------------------------------------
+      # Groq
+      # -----------------------------------------------------
+
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL}
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+
+# ===========================================================
 # Persistent Volumes
-# ==========================================
+# ===========================================================
+
 volumes:
 
   mysql_data:
